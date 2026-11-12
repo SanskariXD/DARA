@@ -1,0 +1,80 @@
+# DARA implementation plan
+
+Digital Assisted Recordkeeping for ASHA Workers
+
+Owner: Anjan Shetty • Repository: https://github.com/SanskariXD/DARA
+Started: 13 November 2026 (Asia/Kolkata)
+
+## Refined brief
+Build an installable, responsive household register for ASHA workers. A worker selects a household, sees its members and previous visits, opens a visit and keeps asking the visible questions naturally. Finalized Gnani transcripts will be sent to Gemini for structured, evidence-backed field changes. A deterministic engine validates and applies these changes without moving the screen or overwriting manual edits. At review, show missing data, uncertain/conflicting answers and reported concerns. Preserve the speaker's original report and the correct household member. Only reviewed clinical rules may authorize future spoken alerts.
+
+This release deliberately uses synthetic records and explicit provider placeholders. No real patient data, paid integrations, or external AI calls. It must remain useful with manual entry and demonstrate the asynchronous extraction flow honestly. The user expressly requested these placeholders; live provider credentials and clinical validation are a later activation phase.
+
+## Phase 1 — Research and decisions
+- [x] Inspect the target GitHub repository and permissions.
+- [x] Verify five mature GitHub references, licenses, activity and relevant capabilities.
+- [x] Commit research findings in `docs/RESEARCH.md`.
+- [x] Choose a small Next.js + React + TypeScript stack; Zod validation; Dexie local persistence; isolated form updates.
+- [x] Record the Apple-inspired design system and interaction rules.
+
+## Phase 2 — Foundation and backend
+- [x] Create typed household, member, visit, transcript, patch, conflict and audit models.
+- [x] Implement incremental validated patches, duplicate suppression and stale response handling.
+- [x] Protect manually edited and focused fields; expose conflicts for review.
+- [x] Implement review/completion invariants and immutable completed visits.
+- [x] Add server route contracts and bounded validation, with demo extraction and explicit disabled live adapters.
+- [x] Create `.env.example`, ignore secrets, document future provider activation.
+
+## Phase 3 — Frontend and local records
+- [x] Build demo entry, household directory/search/filter/add, household detail and member views.
+- [x] Build visit form, manual editing, pause/resume sample transcript flow, progress and transcript evidence.
+- [x] Build review/finish, conflict decisions, history, follow-ups, settings and export.
+- [x] Persist drafts in IndexedDB, recover after reload, handle storage errors and connection changes.
+- [x] Preserve focus, caret, field order and scroll position during updates.
+- [x] Installable PWA, offline app shell, safe areas, keyboard and reduced-motion support.
+
+## Phase 4 — Independent verification
+- [x] Unit tests for patch order, manual protection, member attribution, evidence, invalid numbers, deduplication, review and completion.
+- [x] Integration tests for local persistence and API limits/configuration failure.
+- [ ] Browser flows on desktop/mobile: directory → visit → corrections → review → saved history.
+- [ ] Reload/offline/permission/error-state tests, console scan and accessibility checks.
+- [ ] Independent security/functionality review; fix material findings.
+
+## Phase 5 — Optimization and release
+- [ ] Independent bundle, render and UX review; implement useful measured improvements.
+- [ ] Re-run affected checks after fixes; production build.
+- [ ] Commit and push source, plan, docs, tests and lockfile to `main`.
+- [ ] Create/link Vercel project in the connected `Sanskari's projects` team.
+- [ ] Deploy tested commit; inspect build and live app/API behavior.
+- [ ] Record release URL, commit and verified limitations, then stop.
+
+## Acceptance criteria
+- All visible navigation and primary actions work; no fake live AI or fake cloud save status.
+- Updates target a specific member and field, retain transcript evidence and cannot replace an active/manual edit silently.
+- Duplicate or stale extraction cannot regress newer values. Completed records cannot change through delayed jobs.
+- A draft survives reload; a completed visit is available in history.
+- Provider keys never enter browser bundles or Git. Unconfigured live functionality fails explicitly.
+- Comfortable at 360px, tablet and desktop widths; no unexpected auto-scroll or layout jumps.
+- Research, architecture, setup instructions and remaining activation tasks are in the repository.
+
+## Team ownership
+- Research agent: five-project assessment.
+- Design/frontend agent: design system and interface.
+- Engine agent: domain model, validators, patch engine and invariant tests.
+- Data agent: synthetic fixtures, IndexedDB and controller state.
+- Verification agent: independent functional/security/browser assessment.
+- Optimization agent: performance and UX audit.
+- Main agent: integration, API routes, PWA, verification coordination, GitHub and Vercel release.
+
+## Deferred activation (intentionally not part of placeholder release)
+- [ ] Provision real authentication and household-scoped database access; verify row-level access.
+- [ ] Connect Gnani streaming using a captured official response trace and reconnection tests.
+- [ ] Connect Gemini structured extraction and benchmark Kannada/Hindi/English accuracy and p50/p95.
+- [ ] Clinician-approved danger-sign rules and Gnani TTS with echo suppression.
+- [ ] Device/privacy/security review before real personal health information is entered.
+
+## Implementation notes
+
+- React Hook Form was researched but not installed in the final app: the small fixed form uses stable controlled inputs and the shared patch engine directly. Dexie and Zod are reused dependencies.
+- Vercel project `dara` created successfully. Automatic Git linking was rejected because the Vercel GitHub installation does not currently grant DARA access. Direct source deployment is the release path.
+- The local Chromium runner is restricted by the execution environment. Browser test scenarios are committed for CI; deployed visual/functional verification is tracked separately.
