@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Response, type Request } from "@playwright/test";
 
 test.use({
   baseURL: process.env.BASE_URL ?? "http://127.0.0.1:3000",
@@ -82,6 +82,37 @@ test("sample replay preserves manual edits, attributes the husband, and complete
 }) => {
   test.setTimeout(60000);
   const errors: string[] = [];
+  const apiDiagnostics: Array<Record<string, unknown>> = [];
+  let rejectApiFailure!: (reason: Error) => void;
+  const apiFailure = new Promise<never>((_resolve, reject) => {
+    rejectApiFailure = reject;
+  });
+  // Attach a handler before the first request; the original promise still rejects
+  // in the race below. This prevents an early network failure being unhandled.
+  void apiFailure.catch(() => undefined);
+  const isSampleRequest = (url: string) => new URL(url).pathname === "/api/demo/extract";
+  const onResponse = (response: Response) => {
+    if (!isSampleRequest(response.url())) return;
+    const entry: Record<string, unknown> = {
+      url: response.url(), status: response.status(),
+      origin: response.request().headers().origin ?? null,
+    };
+    apiDiagnostics.push(entry);
+    if (!response.ok()) {
+      void response.text().then((body) => {
+        entry.body = body.slice(0, 1500);
+        rejectApiFailure(new Error(`Sample extraction HTTP ${response.status()} at ${response.url()}; Origin ${entry.origin}; ${entry.body}`));
+      }).catch(() => rejectApiFailure(new Error(`Sample extraction HTTP ${response.status()}; response body unavailable.`)));
+    }
+  };
+  const onRequestFailed = (request: Request) => {
+    if (!isSampleRequest(request.url())) return;
+    const message = request.failure()?.errorText ?? "Unknown network failure";
+    apiDiagnostics.push({url: request.url(), error: message});
+    rejectApiFailure(new Error(`Sample extraction network failure: ${message}`));
+  };
+  page.on("response", onResponse);
+  page.on("requestfailed", onRequestFailed);
   page.on("pageerror", (e) => errors.push(e.message));
   await openWorkspace(page);
   await startFirstVisit(page);
@@ -97,9 +128,19 @@ test("sample replay preserves manual edits, attributes the husband, and complete
   );
   const initialPhoneBox = await phone.boundingBox();
   const initialScroll = await page.evaluate(() => window.scrollY);
-  await expect(
-    page.getByRole("button", { name: "Review sample", exact: true }),
-  ).toBeVisible({ timeout: 40000 });
+  try {
+    await Promise.race([
+      expect(page.getByRole("button", {name: "Review sample", exact: true})).toBeVisible({timeout: 40000}),
+      apiFailure,
+    ]);
+  } finally {
+    page.off("response", onResponse);
+    page.off("requestfailed", onRequestFailed);
+    await test.info().attach("sample-api-responses.json", {
+      body: JSON.stringify(apiDiagnostics, null, 2), contentType: "application/json",
+    });
+  }
+  expect(apiDiagnostics).toHaveLength(7);
   await expect(page.getByLabel("Weight", { exact: false })).toHaveValue("62");
   await expect(phone).toBeFocused();
   expect(

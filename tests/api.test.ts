@@ -47,6 +47,33 @@ describe("demo extraction HTTP boundary", () => {
         .status,
     ).toBe(403);
   });
+  it("accepts the browser Host when Next uses an internal bind address", async () => {
+    const res = await POST(
+      new Request("http://0.0.0.0:3000/api/demo/extract", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          host: "127.0.0.1:3000",
+          origin: "http://127.0.0.1:3000",
+        },
+        body: JSON.stringify(input),
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+  it("does not accept a foreign origin through X-Forwarded-Host", async () => {
+    expect(
+      (
+        await POST(
+          request(input, {
+            host: "dara.example",
+            origin: "https://elsewhere.example",
+            "x-forwarded-host": "elsewhere.example",
+          }),
+        )
+      ).status,
+    ).toBe(403);
+  });
   it("returns explicit unconfigured status for live extraction even if keys exist", async () => {
     const res = await liveExtraction();
     expect(res.status).toBe(503);

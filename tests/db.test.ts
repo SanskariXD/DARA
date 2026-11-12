@@ -8,6 +8,7 @@ import {
 } from "../src/lib/db";
 import { DEMO_HOUSEHOLDS } from "../src/data/households";
 import { getDemoSegments } from "../src/data/demo";
+import { createVisit, editField, completeVisit } from "../src/lib/engine";
 import type { Visit } from "../src/lib/types";
 
 const opened: Array<ReturnType<typeof createWorkspaceRepository>> = [];
@@ -327,6 +328,23 @@ describe("device workspace persistence", () => {
       repo.completeVisitAndHousehold(done, loaded.households[0]),
     ).rejects.toBeInstanceOf(StorageConflictError);
     expect((await other.loadWorkspace()).visits).toEqual([]);
+  });
+
+  it("carries a manually typed numeric age into the household and next visit", async () => {
+    const { repo } = repository();
+    const loaded = await repo.loadWorkspace();
+    const household = loaded.households[0];
+    const memberId = household.members[0].id;
+    const draft = createVisit(household);
+    await repo.saveVisit(draft);
+    const corrected = editField(draft, memberId, "age", "29");
+    expect(corrected.members[memberId].values.age).toBe("29");
+    const ready = editField(corrected, memberId, "symptoms", "No symptoms reported");
+    await repo.completeVisitAndHousehold(completeVisit(ready), household);
+    const saved = await repo.loadWorkspace();
+    const updatedHousehold = saved.households.find((item) => item.id === household.id)!;
+    expect(updatedHousehold.members[0].age).toBe(29);
+    expect(createVisit(updatedHousehold).members[memberId].values.age).toBe(29);
   });
 
   it("keeps fixture segment IDs stable, contiguous and evidence attributable", () => {

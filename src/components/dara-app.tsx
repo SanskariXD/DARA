@@ -1314,11 +1314,14 @@ export default function DaraApp() {
                           </div>
                           <h4>Room for the conversation.</h4>
                           <p>
-                            Try the sample below to see spoken details become
-                            form entries.
+                            {fixtures.length > 0
+                              ? "Try the sample below to see spoken details become form entries."
+                              : "Live transcription is not connected. You can enter this family’s answers directly."}
                           </p>
                           <span className="sample-disclaimer">
-                            Sample text · No microphone used
+                            {fixtures.length > 0
+                              ? "Sample text · No microphone used"
+                              : "No microphone used"}
                           </span>
                         </div>
                       ) : (
@@ -1364,14 +1367,16 @@ export default function DaraApp() {
                         </span>
                         <span>
                           <strong>
-                            {demo === "playing"
-                              ? "Sample conversation is running"
-                              : demo === "paused"
-                                ? "Sample conversation paused"
-                                : demo === "done" ||
-                                    demoIndex >= fixtures.length
-                                  ? "Sample conversation complete"
-                                  : "Record the visit"}
+                            {fixtures.length === 0
+                              ? "Manual visit"
+                              : demo === "playing"
+                                ? "Sample conversation is running"
+                                : demo === "paused"
+                                  ? "Sample conversation paused"
+                                  : demo === "done" ||
+                                      demoIndex >= fixtures.length
+                                    ? "Sample conversation complete"
+                                    : "Record the visit"}
                           </strong>
                           <small>
                             {demo === "playing"

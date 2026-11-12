@@ -3,6 +3,7 @@ import { z } from "zod";
 import { DEFAULT_SETTINGS, DEMO_HOUSEHOLDS } from "../data/households";
 import type { Household, Settings, Visit } from "./types";
 import { reviewVisit } from "./engine";
+import { normalizeFieldValue } from "./schema";
 
 export interface Workspace {
   households: Household[];
@@ -194,12 +195,13 @@ export function householdAfterVisit(
         typeof values.name === "string" && values.name.trim()
           ? values.name.trim()
           : member.name;
+      const normalizedAge = normalizeFieldValue("age", values.age ?? null);
       const age =
-        typeof values.age === "number" &&
-        Number.isInteger(values.age) &&
-        values.age >= 0 &&
-        values.age <= 120
-          ? values.age
+        typeof normalizedAge === "number" &&
+        Number.isInteger(normalizedAge) &&
+        normalizedAge >= 0 &&
+        normalizedAge <= 120
+          ? normalizedAge
           : member.age;
       const phone =
         typeof values.phone === "string"

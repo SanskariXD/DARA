@@ -25,7 +25,13 @@ export async function readJson<T>(
   limit = 8192,
 ): Promise<T> {
   const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin)
+  // Next may construct Request.url with its bind address (e.g. 0.0.0.0).
+  // Host is the authority the browser actually contacted; never trust an
+  // arbitrary X-Forwarded-Host value for this browser-origin boundary.
+  const publicUrl = new URL(request.url);
+  const host = request.headers.get("host");
+  if (host) publicUrl.host = host;
+  if (origin && origin !== publicUrl.origin)
     throw new HttpError(403, "This request must come from the DARA workspace.");
   if (!request.headers.get("content-type")?.includes("application/json"))
     throw new HttpError(415, "Use application/json.");
