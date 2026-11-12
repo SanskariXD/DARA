@@ -1,4 +1,10 @@
-import { test, expect, type Page, type Response, type Request } from "@playwright/test";
+import {
+  test,
+  expect,
+  type Page,
+  type Response,
+  type Request,
+} from "@playwright/test";
 
 test.use({
   baseURL: process.env.BASE_URL ?? "http://127.0.0.1:3000",
@@ -90,26 +96,43 @@ test("sample replay preserves manual edits, attributes the husband, and complete
   // Attach a handler before the first request; the original promise still rejects
   // in the race below. This prevents an early network failure being unhandled.
   void apiFailure.catch(() => undefined);
-  const isSampleRequest = (url: string) => new URL(url).pathname === "/api/demo/extract";
+  const isSampleRequest = (url: string) =>
+    new URL(url).pathname === "/api/demo/extract";
   const onResponse = (response: Response) => {
     if (!isSampleRequest(response.url())) return;
     const entry: Record<string, unknown> = {
-      url: response.url(), status: response.status(),
+      url: response.url(),
+      status: response.status(),
       origin: response.request().headers().origin ?? null,
     };
     apiDiagnostics.push(entry);
     if (!response.ok()) {
-      void response.text().then((body) => {
-        entry.body = body.slice(0, 1500);
-        rejectApiFailure(new Error(`Sample extraction HTTP ${response.status()} at ${response.url()}; Origin ${entry.origin}; ${entry.body}`));
-      }).catch(() => rejectApiFailure(new Error(`Sample extraction HTTP ${response.status()}; response body unavailable.`)));
+      void response
+        .text()
+        .then((body) => {
+          entry.body = body.slice(0, 1500);
+          rejectApiFailure(
+            new Error(
+              `Sample extraction HTTP ${response.status()} at ${response.url()}; Origin ${entry.origin}; ${entry.body}`,
+            ),
+          );
+        })
+        .catch(() =>
+          rejectApiFailure(
+            new Error(
+              `Sample extraction HTTP ${response.status()}; response body unavailable.`,
+            ),
+          ),
+        );
     }
   };
   const onRequestFailed = (request: Request) => {
     if (!isSampleRequest(request.url())) return;
     const message = request.failure()?.errorText ?? "Unknown network failure";
-    apiDiagnostics.push({url: request.url(), error: message});
-    rejectApiFailure(new Error(`Sample extraction network failure: ${message}`));
+    apiDiagnostics.push({ url: request.url(), error: message });
+    rejectApiFailure(
+      new Error(`Sample extraction network failure: ${message}`),
+    );
   };
   page.on("response", onResponse);
   page.on("requestfailed", onRequestFailed);
@@ -130,14 +153,17 @@ test("sample replay preserves manual edits, attributes the husband, and complete
   const initialScroll = await page.evaluate(() => window.scrollY);
   try {
     await Promise.race([
-      expect(page.getByRole("button", {name: "Review sample", exact: true})).toBeVisible({timeout: 40000}),
+      expect(
+        page.getByRole("button", { name: "Review sample", exact: true }),
+      ).toBeVisible({ timeout: 40000 }),
       apiFailure,
     ]);
   } finally {
     page.off("response", onResponse);
     page.off("requestfailed", onRequestFailed);
     await test.info().attach("sample-api-responses.json", {
-      body: JSON.stringify(apiDiagnostics, null, 2), contentType: "application/json",
+      body: JSON.stringify(apiDiagnostics, null, 2),
+      contentType: "application/json",
     });
   }
   expect(apiDiagnostics).toHaveLength(7);
@@ -211,6 +237,10 @@ test("responsive directory, real add action, and keyboard-safe dialog", async ({
           ),
         )
         .toBeLessThanOrEqual(0);
+      await test.info().attach(`directory-${width}px`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
     });
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -243,11 +273,29 @@ test("responsive directory, real add action, and keyboard-safe dialog", async ({
       const fullName = page.getByLabel("Full name", { exact: true });
       await expect(fullName).toHaveValue("Test Family");
       await expect(fullName).toBeVisible();
-      await fullName.focus();
+      await fullName.click();
       await expect(fullName).toBeFocused();
-      await expect(page.getByText("Manual visit", { exact: true })).toBeVisible();
+      expect(
+        await fullName.evaluate((input) => {
+          const rect = input.getBoundingClientRect();
+          const bar = document
+            .querySelector(".recording-bar")!
+            .getBoundingClientRect();
+          return (
+            rect.bottom <= bar.top + 1 ||
+            rect.top >= bar.bottom ||
+            rect.right <= bar.left ||
+            rect.left >= bar.right
+          );
+        }),
+      ).toBe(true);
       await expect(
-        page.getByText("Speech services are not connected yet.", { exact: true }),
+        page.getByText("Manual visit", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Speech services are not connected yet.", {
+          exact: true,
+        }),
       ).toBeVisible();
       await expect(
         page.getByText(
@@ -267,6 +315,10 @@ test("responsive directory, real add action, and keyboard-safe dialog", async ({
           ),
         )
         .toBeLessThanOrEqual(0);
+      await test.info().attach(`manual-visit-${width}px`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
     });
   }
 });
