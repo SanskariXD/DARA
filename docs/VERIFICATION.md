@@ -24,12 +24,12 @@ Checked 13 November 2026 (Asia/Kolkata). All test data is synthetic. Provider pl
 | Raw manual age strings were not carried into the next household visit. | Fixed: identity carry-forward normalizes reviewed age; completion/reload regression passes. |
 | Decimal numeric text was converted before the user finished entering the decimal point. | Fixed by retaining raw manual numeric strings; regression covers decimal intermediates. The Chromium CI manual-entry flow passed, including sequential decimal entry. |
 | Browser history omitted visit identity, risking mismatched household and visit views. | Source fix implemented; the corresponding CI workflow passed. |
-| Sample action offered on newly added households, though server accepts only seeded fixtures. | Source fix implemented; browser check is pending. |
-| Conditional evidence could add row height during extraction. | Evidence space is reserved. Hosted browser verification reported stable field position, focus and caret during replay; automated regression remains in the sample test. |
+| Sample action offered on newly added households, though server accepts only seeded fixtures. | Source fix implemented; hosted browser confirmed the disabled sample action for a new household. |
+| Conditional evidence could add row height during extraction. | Evidence space is reserved. Hosted browser verification reported stable field position, focus and caret during replay; automated sample regression also passed. |
 | Local browser Origin was compared with Next’s internal bind address, blocking replay in CI. | Fixed to use the request Host authority; local and hostile forwarded-host regressions pass. |
 | Invalid proposed conflict value was accepted through an uncaught throwing call. | Invalid acceptance is caught and shown as a notice. |
 
-## Results so far
+## Verified release results
 
 - 60 unit, API, persistence and independent integration tests passed after the origin-boundary regression was added.
 - Type check passed after repository export union was narrowed in its tests.
@@ -37,7 +37,8 @@ Checked 13 November 2026 (Asia/Kolkata). All test data is synthetic. Provider pl
 - The origin check now compares the browser Origin with the request protocol and actual `Host`; it does not trust `X-Forwarded-Host`. Regression tests cover the local bind-address case and rejection of a foreign forwarded host. Independent review found the fix consistent with this synthetic endpoint boundary.
 - The main agent's hosted browser verification completed sample replay, preserved manual weight `62`, retained phone focus/caret and field position during updates, and placed the husband's fever report on Ramesh rather than Lakshmi. This is separate from the automated CI test result.
 - The sample browser test now reports rejected API status, URL, Origin and bounded response body immediately instead of waiting for a generic UI timeout. Its original 40-second completion deadline remains unchanged and it checks that all seven fixture responses arrived. CI preserves screenshots, traces, HTML reports and API diagnostics for seven days.
-- A CI rerun of the fixed commit is still required before claiming all five automated browser tests pass. Local Playwright remains unavailable in the agent execution runtime because Chromium's singleton socket is blocked; CI and hosted-browser evidence are used instead.
+- **Fixed commit `043b07e` passed all five Chromium workflows** in [GitHub Actions run 43318473529](https://github.com/SanskariXD/DARA/actions/runs/43318473529). The run also passed all 60 unit/API/persistence tests, type checking and the production build. Browser scenarios took 51.6 seconds including setup. Local Chromium remains restricted; CI and hosted browser evidence provide the browser results.
+- Hosted settings verification confirmed the Larger text preference survives reload. The recording action explains that speech is unconfigured and does not request microphone access.
 
 ## Limits
 

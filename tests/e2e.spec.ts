@@ -192,11 +192,28 @@ test("sample replay preserves manual edits, attributes the husband, and complete
   expect(errors).toEqual([]);
 });
 
-test("mobile directory, real add action, and keyboard-safe dialog", async ({
+test("responsive directory, real add action, and keyboard-safe dialog", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openWorkspace(page);
+  for (const width of [390, 360, 768]) {
+    await test.step(`Directory fits ${width}px`, async () => {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(
+        page.getByRole("heading", { name: "Households", exact: true }),
+      ).toBeVisible();
+      await expect(page.getByLabel("Search households")).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => document.documentElement.scrollWidth - window.innerWidth,
+          ),
+        )
+        .toBeLessThanOrEqual(0);
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.getByLabel("Search households").fill("does-not-exist");
   await expect(
     page.getByRole("heading", { name: "No households found" }),
@@ -220,14 +237,38 @@ test("mobile directory, real add action, and keyboard-safe dialog", async ({
     page.getByRole("heading", { name: "Test Family & family", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Start visit", exact: true }).click();
-  await expect(page.getByLabel("Full name", { exact: true })).toHaveValue(
-    "Test Family",
-  );
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  for (const width of [390, 360, 768]) {
+    await test.step(`Manual visit fits ${width}px`, async () => {
+      await page.setViewportSize({ width, height: 844 });
+      const fullName = page.getByLabel("Full name", { exact: true });
+      await expect(fullName).toHaveValue("Test Family");
+      await expect(fullName).toBeVisible();
+      await fullName.focus();
+      await expect(fullName).toBeFocused();
+      await expect(page.getByText("Manual visit", { exact: true })).toBeVisible();
+      await expect(
+        page.getByText("Speech services are not connected yet.", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(
+          "Sample conversation is available for the original demo households.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: /^(Try sample conversation|Resume sample|Pause sample|Review sample)$/,
+        }),
+      ).toHaveCount(0);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => document.documentElement.scrollWidth - window.innerWidth,
+          ),
+        )
+        .toBeLessThanOrEqual(0);
+    });
+  }
 });
 
 test("offline shell reload preserves saved drafts without provider requests", async ({

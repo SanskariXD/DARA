@@ -8,6 +8,8 @@ A mobile-first household register with a quiet interface, recoverable local draf
 
 ## Use the app
 
+**[Open DARA](https://dara-sigma.vercel.app/)** · [Verification workflow](https://github.com/SanskariXD/DARA/actions)
+
 1. Open the demo workspace and select a household.
 2. Start a visit. Existing member details are already available.
 3. Edit any field, or choose **Try sample conversation** to replay predefined transcript events through the HTTP extraction boundary.
@@ -69,7 +71,7 @@ Records remain in this browser origin, without cloud backup or application-level
 
 ## GitHub and Vercel
 
-Source belongs in [SanskariXD/DARA](https://github.com/SanskariXD/DARA). The Vercel project is `dara` in `Sanskari's projects`. The connected Vercel account could not link this GitHub repository because the Vercel GitHub installation does not currently grant the required access. A source deployment can still run. Enable repository access in Vercel's GitHub integration and connect DARA to get automatic future deploys. No token is stored in the repository.
+Source belongs in [SanskariXD/DARA](https://github.com/SanskariXD/DARA). The Vercel project is `dara` in `Sanskari's projects`. The connected Vercel account could not link this GitHub repository because the Vercel GitHub installation does not currently grant the required access. The public production app was deployed directly from the verified source. Enable repository access in Vercel's GitHub integration and connect DARA to get automatic future deploys. No token is stored in the repository.
 
 ## License
 

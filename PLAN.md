@@ -36,17 +36,17 @@ This release deliberately uses synthetic records and explicit provider placehold
 ## Phase 4 — Independent verification
 - [x] Unit tests for patch order, manual protection, member attribution, evidence, invalid numbers, deduplication, review and completion.
 - [x] Integration tests for local persistence and API limits/configuration failure.
-- [ ] Browser flows on desktop/mobile: directory → visit → corrections → review → saved history.
-- [ ] Reload/offline/permission/error-state tests, console scan and accessibility checks.
-- [ ] Independent security/functionality review; fix material findings.
+- [x] Browser flows on desktop/mobile: directory → visit → corrections → review → saved history.
+- [x] Reload/offline/permission/error-state tests, console scan and accessibility checks.
+- [x] Independent security/functionality review; fix material findings.
 
 ## Phase 5 — Optimization and release
-- [ ] Independent bundle, render and UX review; implement useful measured improvements.
-- [ ] Re-run affected checks after fixes; production build.
-- [ ] Commit and push source, plan, docs, tests and lockfile to `main`.
-- [ ] Create/link Vercel project in the connected `Sanskari's projects` team.
-- [ ] Deploy tested commit; inspect build and live app/API behavior.
-- [ ] Record release URL, commit and verified limitations, then stop.
+- [x] Independent bundle, render and UX review; implement useful measured improvements.
+- [x] Re-run affected checks after fixes; production build.
+- [x] Commit and push source, plan, docs, tests and lockfile to `main`.
+- [x] Create Vercel project in the connected `Sanskari's projects` team.
+- [x] Deploy tested commit; inspect build and live app/API behavior.
+- [x] Record release URL, commit and verified limitations, then stop.
 
 ## Acceptance criteria
 - All visible navigation and primary actions work; no fake live AI or fake cloud save status.
@@ -67,6 +67,7 @@ This release deliberately uses synthetic records and explicit provider placehold
 - Main agent: integration, API routes, PWA, verification coordination, GitHub and Vercel release.
 
 ## Deferred activation (intentionally not part of placeholder release)
+- [ ] Grant the Vercel GitHub installation DARA repository access, then connect it for automatic Git deployments.
 - [ ] Provision real authentication and household-scoped database access; verify row-level access.
 - [ ] Connect Gnani streaming using a captured official response trace and reconnection tests.
 - [ ] Connect Gemini structured extraction and benchmark Kannada/Hindi/English accuracy and p50/p95.
@@ -77,4 +78,11 @@ This release deliberately uses synthetic records and explicit provider placehold
 
 - React Hook Form was researched but not installed in the final app: the small fixed form uses stable controlled inputs and the shared patch engine directly. Dexie and Zod are reused dependencies.
 - Vercel project `dara` created successfully. Automatic Git linking was rejected because the Vercel GitHub installation does not currently grant DARA access. Direct source deployment is the release path.
-- The local Chromium runner is restricted by the execution environment. Browser test scenarios are committed for CI; deployed visual/functional verification is tracked separately.
+- The local Chromium runner is restricted by the execution environment. All five browser scenarios passed in GitHub Actions; deployed visual and functional verification also passed.
+
+## Release checkpoint
+
+- Public app: https://dara-sigma.vercel.app/
+- Deployed implementation commit: `043b07e9770e3252e1f01eacaa4a082a29147ff8`. Later documentation and responsive-test updates do not change runtime application source.
+- CI: 60 unit/API/persistence regressions and five Chromium workflows passed; type checking and production build passed.
+- Details and exact deployment identity: `docs/RELEASE.md`.

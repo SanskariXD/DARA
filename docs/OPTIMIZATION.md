@@ -9,13 +9,13 @@ Review date: 13 November 2026 (India). This document distinguishes measurements 
 | Deterministic patch engine | `src/lib/engine.ts` updates the affected member with structural sharing. It does not deep-clone every member for each field. | Keep the simple synchronous engine; no worker or orchestration service justified. |
 | Patch size | `src/lib/schema.ts` restricts a patch to 40 changes and transcript segments to 8,000 characters. The demo endpoint accepts fixture identifiers rather than a whole visit. | Retain bounded contracts and small HTTP payloads. |
 | Persistence | `src/lib/db.ts` serializes writes, checks versions inside Dexie transactions, and keeps external network work outside transactions. | Preserve transaction boundaries; do not move provider calls into storage transactions. |
-| Save scheduling | The initial frontend debounces visit persistence by 350 ms. | Avoid a database write per keystroke, but ensure navigation/finalization flushes outstanding work and never claims saved early. |
+| Save scheduling | The final controller immediately queues local writes and tracks each pending operation. | Prioritize reliable draft persistence; saved state appears only after the queue settles. Completion is transactional. |
 | Raw input | The first frontend version normalized every keystroke, which trimmed a space and removed an unfinished decimal. | Reported to frontend/engine owners. Engine now preserves manual text; frontend owns raw numeric editing. This is a correctness fix that also avoids caret disruption. |
 | Transcript persistence | A transcript can be added before the extraction response arrives. The original helper did not advance the visit revision. | Engine owner fixed the helper to increment revision; frontend must use the helper before saving. |
 | Service-worker readiness | The first registration component announced readiness immediately after `register()` resolved, before precache installation completed. | Fixed in `src/app/pwa.tsx`: it now awaits `navigator.serviceWorker.ready`. |
 | Rendering/assets | System fonts, CSS, outline icons, no external photography, charting library, waveform or perpetual animation. | Keep this lightweight direction. Do not introduce media or decorative animation during polish. |
 | Form layout | The first stylesheet used some essential help/review text below 12px and conditionally added evidence rows. | Reported to frontend owner: improve readable text sizes and reserve evidence space so incoming updates do not move later fields. |
-| Unused dependency | Source search found no `react-hook-form` import in the initial implementation. | Root will remove the unused package. Do not force another form state system into a working small form solely for nominal reuse. |
+| Unused dependency | Source search found no `react-hook-form` import in the initial implementation. | The unused package was removed. Do not force another form state system into a working small form solely for nominal reuse. |
 
 ## CPU-only engine sanity measurement
 
@@ -61,7 +61,7 @@ Two small resilience improvements were implemented in the generator after review
 
 Independent local Playwright timing was attempted. The bundled Playwright browser was absent, and the installed Chromium could not create its process-singleton socket in the execution environment (`Operation not permitted`). Therefore this report contains **no measured browser latency, frame rate, layout-shift score, or phone benchmark**.
 
-The verification suite includes manual-edit/focus/caret preservation during sample replay and offline reload recovery. Root is arranging visual and functional verification through an available browser surface after deployment. Final verification results belong in the verification report; source inspection alone does not establish those checks passed.
+The verification suite includes manual-edit/focus/caret preservation during sample replay and offline reload recovery. All five browser workflows passed in GitHub Actions, including offline reload and sample/manual-edit stability. Hosted visual verification also confirmed stable field position, focus and caret. These functional observations are not performance scores. See the verification report for exact evidence.
 
 ## Limits to retain when enabling live providers
 
@@ -71,3 +71,7 @@ The verification suite includes manual-edit/focus/caret preservation during samp
 - Keep real-time transcript rendering out of the form's input subtree where practical. Introduce transcript windowing only after real conversation volume warrants it; seven demo passages do not justify virtualization.
 - Store credentials only on the server. Do not introduce client-side provider retries that can multiply paid requests without limits.
 - Measure end-of-speech to accepted field update on actual target phones and networks after integration. Report p50 and p95 separately from provider-only latency.
+
+## Release build measurement
+
+The verified implementation build (`043b07e`) precaches 13 JavaScript/CSS assets: 932,244 raw bytes and 273,670 bytes estimated gzip (267.3 KiB), with zero external font files. The generated worker is 2,127 bytes. The same gzip estimation method as the baseline was used; these are not measured network transfer sizes. The modest increase accompanies input correctness, evidence space and readable mobile typography. No optimization was allowed to discard review evidence or compromise local draft durability.
