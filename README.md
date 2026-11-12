@@ -19,6 +19,8 @@ A mobile-first household register with a quiet interface, recoverable local draf
 
 The sample demonstrates a corrected weight, member-specific fever report, pregnancy information and exact transcript evidence. It is a fixture replay, not a simulation presented as live transcription or AI. New households support manual visits; sample extraction is restricted to seeded households.
 
+Screenshots: [mobile directory](docs/mobile-preview.png) · [tablet visit](docs/tablet-visit.png) · [desktop workspace](docs/preview.jpg).
+
 ## Run locally
 
 Requirements: Node.js 22+ (Vercel project uses Node 24), npm.

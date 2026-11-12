@@ -40,6 +40,14 @@ Checked 13 November 2026 (Asia/Kolkata). All test data is synthetic. Provider pl
 - **Fixed commit `043b07e` passed all five Chromium workflows** in [GitHub Actions run 43318473529](https://github.com/SanskariXD/DARA/actions/runs/43318473529). The run also passed all 60 unit/API/persistence tests, type checking and the production build. Browser scenarios took 51.6 seconds including setup. Local Chromium remains restricted; CI and hosted browser evidence provide the browser results.
 - Hosted settings verification confirmed the Larger text preference survives reload. The recording action explains that speech is unconfigured and does not request microphone access.
 
+## Final responsive release
+
+Commit `4318178e6c751b162ea7050fdf6ea5410662efee` passed the complete [GitHub Actions run 43320022534](https://github.com/SanskariXD/DARA/actions/runs/43320022534): 60 unit/API/persistence tests, type checking, production build, and all five browser workflows.
+
+The expanded responsive test exposed a hidden recording-status description at tablet widths. The 760–1099px layout now keeps that context visible above wrapping controls and reserves scrolling clearance for focused inputs. Directory and manual-visit checks passed at 360px, 390px and 768px. The test asserts input focus, no toolbar overlap, no horizontal overflow, accurate manual-visit text and no sample replay controls on a custom household. Six screenshots were captured by CI; the phone and tablet screenshots were inspected visually. See [mobile directory](mobile-preview.png) and [tablet visit](tablet-visit.png).
+
+Production deployment `dpl_CBq4YGZm7vLkhaFF3gjAa84hSKEs` is READY and serves the public alias. Live health, app shell and PWA assets returned 200; synthetic extraction returned the expected member patch. Live provider routes intentionally returned 503 with explicit unconfigured responses.
+
 ## Limits
 
 A passing demo test suite verifies the implemented synthetic/manual workflow. It does not justify a promise of zero bugs. Browser storage is local to this origin and device, not encrypted patient storage or a cloud backup. The API placeholders fail closed and cannot be activated solely by populating a credential until the documented provider work and access controls are implemented.

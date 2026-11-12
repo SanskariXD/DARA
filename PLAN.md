@@ -83,6 +83,6 @@ This release deliberately uses synthetic records and explicit provider placehold
 ## Release checkpoint
 
 - Public app: https://dara-sigma.vercel.app/
-- Deployed implementation commit: `043b07e9770e3252e1f01eacaa4a082a29147ff8`. Later documentation and responsive-test updates do not change runtime application source.
+- Deployed implementation commit: `4318178e6c751b162ea7050fdf6ea5410662efee`. Later release-documentation updates do not change runtime application source.
 - CI: 60 unit/API/persistence regressions and five Chromium workflows passed; type checking and production build passed.
 - Details and exact deployment identity: `docs/RELEASE.md`.
