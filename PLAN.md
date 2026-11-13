@@ -8,7 +8,7 @@ Started: 13 November 2026 (Asia/Kolkata)
 ## Refined brief
 Build an installable, responsive household register for ASHA workers. A worker selects a household, sees its members and previous visits, opens a visit and keeps asking the visible questions naturally. Finalized Gnani transcripts will be sent to Gemini for structured, evidence-backed field changes. A deterministic engine validates and applies these changes without moving the screen or overwriting manual edits. At review, show missing data, uncertain/conflicting answers and reported concerns. Preserve the speaker's original report and the correct household member. Only reviewed clinical rules may authorize future spoken alerts.
 
-Current work: **0.3 multilingual survey refinement**. Five fictional examples accompany fresh household and pregnancy surveys. Automatic speech language detection is separate from six locally translated interface languages. Person attribution, corrections, simplified health history, background conversation reconciliation and a confirmed reset are under integrated verification. Records remain device-local. Earlier release phases below are historical.
+Current release: **0.3 multilingual survey refinement**, deployed at https://dara-sigma.vercel.app/. Five fictional examples, six local interface languages, automatic speech detection, precise person attribution/corrections, focused health forms, full-conversation recovery and confirmed reset are implemented and verified. Records remain device-local. Earlier phases below are historical.
 
 ## Phase 1 — Research and decisions
 - [x] Inspect the target GitHub repository and permissions.
@@ -144,6 +144,14 @@ User feedback: working voice workflow needs more reliable person-specific mappin
 - [x] Improve final review with member summaries, specific missing-question links, and honest incomplete/offline-check states.
 - [x] Bundle English, Kannada, Hindi, Telugu, Tamil and Malayalam interface dictionaries locally; keep spoken-language detection separate.
 - [x] Add a confirmed clear-user-entries action that restores examples and preserves preferences; guard concurrent and delayed writes.
-- [ ] Verify unit/integration/API/browser/mobile/offline/reset and language workflows, inspect visual evidence, then push and deploy.
+- [x] Verify unit/integration/API/browser/mobile/offline/reset and language workflows, inspect visual evidence, then push and deploy.
 
 Privacy and validation boundaries remain as documented in docs/INTEGRATIONS.md. This release changes recordkeeping behavior, not clinical diagnosis or official screening requirements. All fixture/provider verification uses invented records.
+
+## Current release checkpoint (0.3)
+
+- Runtime: `249c91d5253bab7ebf2db11cca699be50a868a72`.
+- [CI run 43424538682](https://github.com/SanskariXD/DARA/actions/runs/43424538682): 206 tests, TypeScript, production build and 10 browser journeys passed.
+- Production deployment: `dpl_AVuDD9Vx9z1ENSTZdq5kJ1W77nVJ`; same public address and private workspace code.
+- Source and client-bundle secret scans passed. Hosted reconciliation recovered only the expected synthetic missing answer.
+- Release details and verification record: [docs/RELEASE.md](docs/RELEASE.md).

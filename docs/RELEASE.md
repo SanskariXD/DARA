@@ -1,6 +1,11 @@
 # DARA 0.3 release
 
-13 November 2026. Final deployment identity and passing CI evidence will be recorded here after publication.
+Released 13 November 2026.
+
+- Tested and deployed runtime: `249c91d5253bab7ebf2db11cca699be50a868a72`.
+- [Passing GitHub Actions run 43424538682](https://github.com/SanskariXD/DARA/actions/runs/43424538682).
+- Production deployment: `dpl_AVuDD9Vx9z1ENSTZdq5kJ1W77nVJ`.
+- Deployment URL: https://dara-8ntzoh0c1-sanskaris-projects.vercel.app/
 
 - App: https://dara-sigma.vercel.app/
 - Repository: https://github.com/SanskariXD/DARA
@@ -20,9 +25,15 @@
 
 ## Verification
 
-See [VERIFICATION.md](VERIFICATION.md) for resolved review findings and [PROVIDERS.md](PROVIDERS.md) for real synthetic provider checks. CI covers TypeScript, unit/API/domain/storage/recorder/integration checks, production build and browser workflows. Final exact counts and run links are recorded after completion.
+See [VERIFICATION.md](VERIFICATION.md) for resolved review findings and [PROVIDERS.md](PROVIDERS.md) for real synthetic provider checks. CI covers TypeScript, unit/API/domain/storage/recorder/integration checks, production build and browser workflows. All **206 tests across 13 files**, TypeScript, the production build and **10 Chromium journeys** passed on the exact deployed runtime. Browser checks cover manual/custom visits and blank repeats, 360/390/768px layouts, offline recovery, automatic member creation and protected edits, microphone denial, health/review navigation, all six languages, delayed-response reset, background backfill and recovery during final completion.
 
 The live Kannada probe assigned BP, overall no-concerns and breathing reports to three different intended members. A Hindi correction changed an extracted age from 60 to 62; a full-history probe recovered an earlier missing age without undoing that correction. These establish specific working cases, not field accuracy guarantees.
+
+The final screenshot review verified localized fields and navigation, including wrapped Malayalam step labels. All reviewed names and records were fictional. Verification screenshots are not published in this repository.
+
+The hosted reconciliation endpoint rejected unauthenticated access, returned a valid response for an original synthetic passage and recovered the missing age while preserving a newer correction and an unstated age. Signed Secure session and logout checks passed. Actual configured secrets were absent from published source and built client assets.
+
+This release record follows the runtime in a documentation-only commit.
 
 ## Existing boundaries
 

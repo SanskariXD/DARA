@@ -21,13 +21,15 @@ Checked 13 November 2026. All test records and provider probes are fictional.
 | Old conversation backfill could undo newer edits. | Fill only missing, unprotected values against the latest survey, original segment index and revision. |
 | Custom questions or changed member identities could invalidate a completed conversation check. | Fingerprints include the complete field schema and roster; changes during a pass leave the check incomplete and trigger a fresh pass. |
 | Delayed provider responses or old tabs could recreate cleared records. | Abort active checks, invalidate UI work and enforce an atomic workspace-generation check at storage writes. |
+| Failed captured audio could be retried after clearing entries. | Explicit reset discards and aborts the recorder queue; normal stop still preserves it for retry. Stale session callbacks cannot release a new recording. |
+| Long Malayalam step labels ran into adjacent labels on narrow phones. | Constrain each label to its own column, allow wrapping and check text-line bounds in all six languages. |
 | Missing prompts were hidden during checking but the heading claimed completion. | Pending-check wording stays visible until the check completes or the worker explicitly reviews manually. |
 | Generated and migrated notes appeared in multiple places. | Consolidate the editable content in household notes; preserve original source/history internally. |
 | Indic text can exceed byte limits despite meeting the character limit. | Separate a 256,000-byte request limit from the 16,000 target-character cap, preserve exact passages and split larger batches. |
 
 ## Verification evidence
 
-Final test, browser and deployment identities are recorded in [RELEASE.md](RELEASE.md). Live synthetic provider outcomes and source documentation are in [PROVIDERS.md](PROVIDERS.md). Deterministic browser tests mock paid providers; only separately documented provider probes make real calls.
+Final verification passed: **206 tests across 13 files**, TypeScript, production build and **10 browser journeys** in [run 43424538682](https://github.com/SanskariXD/DARA/actions/runs/43424538682). Exact deployment identity is recorded in [RELEASE.md](RELEASE.md). Live synthetic provider outcomes and source documentation are in [PROVIDERS.md](PROVIDERS.md). Deterministic browser tests mock paid providers; only separately documented provider probes make real calls.
 
 ## Remaining validation
 
