@@ -56,7 +56,11 @@ function transcript(index: number, text: string): SurveyTranscript {
   };
 }
 function namedSurvey(): Survey {
-  let survey = createSurvey({ householdId: "qa-home" }, timestamp, "qa-survey");
+  let survey = createSurvey(
+    { householdId: "qa-home", templateVersion: 2 },
+    timestamp,
+    "qa-survey",
+  );
   survey = editSurveyField(survey, null, "familySize", 1, timestamp);
   return editSurveyField(
     survey,
@@ -127,7 +131,10 @@ describe("v0.3 release integration", () => {
     ).toHaveLength(2);
     expect(
       one.surveys.filter((survey) => survey.templateId === "family-health"),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
+    expect(
+      one.surveys.filter((survey) => survey.templateId === "rainy-season"),
+    ).toHaveLength(1);
     expect(
       one.surveys.every((survey) => surveySchema.safeParse(survey).success),
     ).toBe(true);

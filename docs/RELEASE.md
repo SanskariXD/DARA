@@ -41,4 +41,4 @@ Records remain in the current browser/device's IndexedDB, with JSON export. Ther
 
 Native-speaking review of translated copy and noisy human speech on target phones remain field-validation work. The questionnaire is not represented as an approved government form or a clinical diagnosis system.
 
-Vercel's GitHub installation still lacks repository access. The source is kept on GitHub and deployed directly; automatic future Git deployments need that installation access granted and the existing project linked.
+The initial release used direct upload. Automatic Git deployments were subsequently verified at commit `62a4cc7` on 13 November 2026.

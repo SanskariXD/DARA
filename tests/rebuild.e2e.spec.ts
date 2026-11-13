@@ -5,6 +5,7 @@ import type {
   SurveyTranscript,
 } from "../src/lib/survey";
 import { translate, type AppLanguage } from "../src/lib/i18n";
+import { decodeProviderWire } from "../src/lib/server/live-providers";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
 
@@ -86,6 +87,11 @@ async function saved(page: Page) {
 
 async function selectHealthMember(page: Page, name: string) {
   await section(page, "Health");
+  const back = page.getByRole("button", {
+    name: "Back to health overview",
+    exact: true,
+  });
+  if (await back.count()) await back.click();
   await page.locator(".health-member-row").filter({ hasText: name }).click();
   await expect(page.getByRole("region", { name, exact: true })).toBeVisible();
 }
@@ -154,6 +160,9 @@ test("blank survey, manual identities, custom question, review, immutable histor
   await startVisit(page);
   await page.getByLabel(/^Family members/).fill("3");
   await page
+    .getByLabel("Household phone number", { exact: true })
+    .fill("9876543210");
+  await page
     .getByRole("button", { name: "Add a question", exact: true })
     .click();
   const custom = page.getByRole("dialog", {
@@ -191,15 +200,14 @@ test("blank survey, manual identities, custom question, review, immutable histor
       .getByRole("combobox", { name: "Relationship", exact: true })
       .selectOption(["self", "spouse", "child"][index]);
   }
-  await members
-    .first()
-    .getByLabel(/^Weight/)
-    .pressSequentially("63.05");
-  await expect(members.first().getByLabel(/^Weight/)).toHaveValue("63.05");
+  await expect(page.getByLabel(/^Weight/)).toHaveCount(0);
+  await expect(page.getByLabel("Phone number", { exact: true })).toHaveCount(0);
   await selectHealthMember(page, fixtureNames[0]);
   await page
     .getByRole("combobox", { name: "Health discussion", exact: true })
     .selectOption("concerns");
+  await page.getByLabel(/^Weight/).pressSequentially("63.05");
+  await expect(page.getByLabel(/^Weight/)).toHaveValue("63.05");
   await page
     .getByLabel("Reported symptoms and health history", { exact: true })
     .fill("Synthetic observation for verification only.");
@@ -231,6 +239,10 @@ test("blank survey, manual identities, custom question, review, immutable histor
     .getByRole("checkbox", { name: "I have reviewed this visit." })
     .check();
   await capture(page, testInfo, "review-ready-desktop");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await noOverflow(page);
+  await capture(page, testInfo, "review-compact-390");
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole("button", { name: "Finish visit", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "All recorded.", exact: true }),
@@ -261,6 +273,9 @@ test("blank survey, manual identities, custom question, review, immutable histor
   await section(page, "Household");
   await expect(page.getByLabel(/^Family members/)).toHaveValue("3");
   await expect(page.getByLabel(/^Family members/)).toBeDisabled();
+  await expect(
+    page.getByLabel("Household phone number", { exact: true }),
+  ).toHaveValue("9876543210");
   await expect(page.getByLabel(/^Preferred visit time/)).toHaveValue("Morning");
   await section(page, "Family");
   for (let index = 0; index < fixtureNames.length; index++) {
@@ -277,13 +292,8 @@ test("blank survey, manual identities, custom question, review, immutable histor
         .getByLabel(/^Full name/),
     ).toBeDisabled();
   }
-  await expect(
-    page
-      .locator(".family-section")
-      .first()
-      .getByLabel(/^Weight/),
-  ).toHaveValue("63.05");
   await selectHealthMember(page, fixtureNames[0]);
+  await expect(page.getByLabel(/^Weight/)).toHaveValue("63.05");
   await expect(
     page.getByLabel("Reported symptoms and health history", { exact: true }),
   ).toHaveValue("Synthetic observation for verification only.");
@@ -376,7 +386,10 @@ test("saved drafts reload and remain editable offline without provider requests"
   await expect(page.getByLabel(/^Full name/)).toHaveValue(
     "Offline Fixture Person",
   );
-  await page.getByLabel("Phone number", { exact: true }).fill("9876543210");
+  await section(page, "Household");
+  await page
+    .getByLabel("Household phone number", { exact: true })
+    .fill("9876543210");
   await section(page, "Notes");
   await expect(page.getByLabel("Household notes", { exact: true })).toHaveValue(
     "Synthetic draft survives offline reload.",
@@ -389,14 +402,14 @@ test("saved drafts reload and remain editable offline without provider requests"
   await page
     .getByRole("button", { name: "Continue visit", exact: true })
     .click();
-  await section(page, "Family");
-  await expect(page.getByLabel("Phone number", { exact: true })).toHaveValue(
-    "9876543210",
-  );
+  await section(page, "Household");
+  await expect(
+    page.getByLabel("Household phone number", { exact: true }),
+  ).toHaveValue("9876543210");
   expect(requests).toEqual([]);
 });
 
-test("mocked extraction creates three members automatically and protects active and manual answers", async ({
+test("fresh English and Kannada extraction fills health and notes while preserving active and manual answers", async ({
   page,
 }) => {
   test.setTimeout(60000);
@@ -413,20 +426,68 @@ test("mocked extraction creates three members automatically and protects active 
       segment: SurveyTranscript;
     };
     let result: SurveyExtractionResult;
-    if (calls === 1)
-      result = {
-        familySize: 3,
-        familySizeEvidence: segment.text,
-        members: [],
-        notes: [
-          {
-            text: "The household prefers morning visits.",
-            evidence: "The household prefers morning visits.",
-            memberId: null,
-          },
-        ],
-      };
-    else if (calls === 2) {
+    if (calls === 1 || calls === 2) {
+      const english = calls === 1;
+      const person = english ? "Extracted Fixture Person" : "ಪರೀಕ್ಷಾ ರವಿ";
+      const introduction = english
+        ? "My name is Extracted Fixture Person."
+        : "ನನ್ನ ಹೆಸರು ಪರೀಕ್ಷಾ ರವಿ.";
+      const health = english
+        ? "I have a headache and I have BP."
+        : "ನನಗೆ ಎರಡು ದಿನದಿಂದ ಕೆಮ್ಮು ಇದೆ.";
+      const note = english
+        ? "The household prefers morning visits."
+        : "ನಾವು ನಲ್ಲಿಯಿಂದ ಕುಡಿಯುವ ನೀರು ತರುತ್ತೇವೆ.";
+      result = decodeProviderWire(
+        {
+          familySize: english ? 3 : null,
+          familySizeEvidence: english
+            ? "There are three family members."
+            : null,
+          familySizeCorrection: null,
+          members: [
+            {
+              memberId: null,
+              slot: english ? 1 : 2,
+              evidence: segment.text,
+              uncertain: false,
+              attribution: {
+                kind: "name",
+                reference: person,
+                evidence: introduction,
+                segmentId: segment.id,
+              },
+              corrections: [],
+              fields: [
+                { fieldId: "name", value: person, evidence: introduction },
+                {
+                  fieldId: "healthStatus",
+                  value: "concerns",
+                  evidence: health,
+                },
+                { fieldId: "healthHistory", value: health, evidence: health },
+                ...(english
+                  ? [
+                      {
+                        fieldId: "hypertension",
+                        value: "yes",
+                        evidence: health,
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ],
+          householdFields: [
+            { fieldId: "householdNotes", value: note, evidence: note },
+          ],
+          notes: [],
+          uncertainties: [],
+        },
+        survey,
+        segment,
+      );
+    } else if (calls === 3) {
       await secondResponse;
       result = {
         familySize: null,
@@ -434,7 +495,7 @@ test("mocked extraction creates three members automatically and protects active 
           {
             memberId: survey.members[0].id,
             name: "Suggested Fixture Name",
-            phone: "9876543210",
+            age: 42,
             evidence: segment.text,
             attribution: {
               kind: "name",
@@ -478,19 +539,58 @@ test("mocked extraction creates three members automatically and protects active 
   await startVisit(page);
   let dialog = await beginText(
     page,
-    "There are three family members in this synthetic test household. The household prefers morning visits.",
+    "There are three family members. My name is Extracted Fixture Person. I have a headache and I have BP. The household prefers morning visits.",
   );
   await expect(
     dialog.getByLabel("Add conversation text", { exact: true }),
   ).toHaveValue("");
   await dialog.getByRole("button", { name: "Close dialog" }).click();
   await expect(page.getByLabel(/^Family members/)).toHaveValue("3");
+  await selectHealthMember(page, "Extracted Fixture Person");
+  await expect(
+    page.getByLabel("Reported symptoms and health history", { exact: true }),
+  ).toHaveValue("I have a headache and I have BP.");
+  await expect(
+    page.getByRole("combobox", {
+      name: "High blood pressure reported",
+      exact: true,
+    }),
+  ).toHaveValue("yes");
+  dialog = await beginText(
+    page,
+    "ನನ್ನ ಹೆಸರು ಪರೀಕ್ಷಾ ರವಿ. ನನಗೆ ಎರಡು ದಿನದಿಂದ ಕೆಮ್ಮು ಇದೆ. ನಾವು ನಲ್ಲಿಯಿಂದ ಕುಡಿಯುವ ನೀರು ತರುತ್ತೇವೆ.",
+  );
+  await expect(
+    dialog.getByLabel("Add conversation text", { exact: true }),
+  ).toHaveValue("");
+  await dialog.getByRole("button", { name: "Close dialog" }).click();
+  await selectHealthMember(page, "ಪರೀಕ್ಷಾ ರವಿ");
+  await expect(
+    page.getByLabel("Reported symptoms and health history", { exact: true }),
+  ).toHaveValue("ನನಗೆ ಎರಡು ದಿನದಿಂದ ಕೆಮ್ಮು ಇದೆ.");
   await section(page, "Notes");
   await expect(page.getByLabel("Household notes", { exact: true })).toHaveValue(
-    "The household prefers morning visits.",
+    "The household prefers morning visits.\nನಾವು ನಲ್ಲಿಯಿಂದ ಕುಡಿಯುವ ನೀರು ತರುತ್ತೇವೆ.",
   );
   await expect(page.locator(".survey-content textarea")).toHaveCount(1);
   await expect(page.locator(".captured-note")).toHaveCount(0);
+  await saved(page);
+  await page.reload();
+  await page
+    .locator(".household-card")
+    .filter({ hasText: "E2E-EXTRACT" })
+    .click();
+  await page
+    .getByRole("button", { name: "Continue visit", exact: true })
+    .click();
+  await selectHealthMember(page, "Extracted Fixture Person");
+  await expect(
+    page.getByLabel("Reported symptoms and health history", { exact: true }),
+  ).toHaveValue("I have a headache and I have BP.");
+  await selectHealthMember(page, "ಪರೀಕ್ಷಾ ರವಿ");
+  await expect(
+    page.getByLabel("Reported symptoms and health history", { exact: true }),
+  ).toHaveValue("ನನಗೆ ಎರಡು ದಿನದಿಂದ ಕೆಮ್ಮು ಇದೆ.");
   await section(page, "Family");
   await expect(page.locator(".family-section")).toHaveCount(3);
   const first = page.locator(".family-section").first();
@@ -502,13 +602,13 @@ test("mocked extraction creates three members automatically and protects active 
     .fill("Retained Third Fixture");
   dialog = await beginText(
     page,
-    "Correction for Manual Fixture Name: the name is Suggested Fixture Name and the phone is 9876543210.",
+    "Correction for Manual Fixture Name: the name is Suggested Fixture Name and the age is 42.",
   );
-  await expect.poll(() => calls).toBe(2);
+  await expect.poll(() => calls).toBe(3);
   await dialog.getByRole("button", { name: "Close dialog" }).click();
-  const phone = first.getByLabel("Phone number", { exact: true });
-  await phone.focus();
-  const beforeBox = await phone.boundingBox();
+  const age = first.getByLabel(/^Age/);
+  await age.focus();
+  const beforeBox = await age.boundingBox();
   const beforeScroll = await page.evaluate(() => window.scrollY);
   await expect(
     page.getByText("Filling recorded answers", { exact: true }),
@@ -520,9 +620,9 @@ test("mocked extraction creates three members automatically and protects active 
   await expect(first.getByLabel(/^Full name/)).toHaveValue(
     "Manual Fixture Name",
   );
-  await expect(phone).toHaveValue("");
-  await expect(phone).toBeFocused();
-  const afterBox = await phone.boundingBox();
+  await expect(age).toHaveValue("");
+  await expect(age).toBeFocused();
+  const afterBox = await age.boundingBox();
   expect(
     Math.abs((afterBox?.y ?? 0) - (beforeBox?.y ?? 0)),
   ).toBeLessThanOrEqual(1);
@@ -563,7 +663,7 @@ test("mocked extraction creates three members automatically and protects active 
   await expect(
     page.getByText(/family size|member sections|family member count/i),
   ).toBeVisible();
-  expect(calls).toBe(3);
+  expect(calls).toBe(4);
 });
 
 test("denied microphone permission preserves the manual visit and offers recovery", async ({
@@ -625,9 +725,13 @@ test("denied microphone permission preserves the manual visit and offers recover
 test("relationship defaults respect explicit sex and missing health answers open the correct member", async ({
   page,
 }, testInfo) => {
+  test.setTimeout(60000);
   await openWorkspace(page);
   await addHousehold(page, "Health Navigation Fixture", "E2E-HEALTH");
-  await startVisit(page);
+  await page
+    .getByRole("button", { name: "Start pregnancy survey", exact: true })
+    .click();
+  await expect(page.locator("main h1")).toHaveText("Pregnancy survey");
   await page.getByLabel(/^Family members/).fill("2");
   await section(page, "Family");
   const members = page.locator(".family-section");
@@ -687,21 +791,45 @@ test("relationship defaults respect explicit sex and missing health answers open
   await page
     .getByRole("combobox", { name: "Pregnancy status", exact: true })
     .selectOption("yes");
+  await page.getByLabel(/^Pregnancy duration/).fill("11");
   await noOverflow(page);
   await capture(page, testInfo, "health-expanded-390");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await section(page, "Review");
   const issue = page
     .locator(".review-issues > div")
-    .filter({ hasText: "Gestational age is required." });
+    .filter({ hasText: /pregnancy duration.*between 0 and 10/i });
   await expect(issue).toHaveCount(1);
   await expect(issue).toContainText("Fixture Mother");
   await issue.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(
     page.getByRole("region", { name: "Fixture Mother", exact: true }),
   ).toBeVisible();
-  await expect(page.getByLabel(/^Gestational age/)).toBeFocused();
-  await page.getByLabel(/^Gestational age/).fill("24");
+  await expect(page.getByLabel(/^Pregnancy duration/)).toBeFocused();
+  await page.getByLabel(/^Pregnancy duration/).fill("5");
+  await page
+    .getByRole("combobox", {
+      name: "Mother and Child Protection card",
+      exact: true,
+    })
+    .selectOption("has-card");
+  await page
+    .getByLabel("Food and nutrition reported", { exact: true })
+    .fill("Synthetic report: rice, vegetables and lentils.");
+  await page.getByLabel("Injections received", { exact: true }).fill("1");
+  await page
+    .getByRole("checkbox", { name: "MCP card discussed", exact: true })
+    .check();
+  await page
+    .getByRole("checkbox", {
+      name: "Nutrition and supplements discussed",
+      exact: true,
+    })
+    .check();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await noOverflow(page);
+  await capture(page, testInfo, "pregnancy-care-390");
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page
     .getByRole("button", { name: "Back to health overview", exact: true })
     .click();
@@ -721,6 +849,67 @@ test("relationship defaults respect explicit sex and missing health answers open
   await section(page, "Notes");
   await expect(page.locator(".survey-content textarea")).toHaveCount(1);
   await expect(page.getByLabel("Member notes", { exact: true })).toHaveCount(0);
+  await section(page, "Review");
+  await page
+    .getByRole("checkbox", { name: "I have reviewed this visit.", exact: true })
+    .check();
+  await page.getByRole("button", { name: "Finish visit", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "All recorded.", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Back to households", exact: true })
+    .click();
+  await page
+    .locator(".household-card")
+    .filter({ hasText: "E2E-HEALTH" })
+    .click();
+  await page
+    .getByRole("button", { name: "Start rainy-season visit", exact: true })
+    .click();
+  await expect(page.locator("main h1")).toHaveText("Rainy-season visit");
+  await expect(page.locator(".health-member-row")).toHaveCount(2);
+  await expect(
+    page.locator(".health-member-row").filter({ hasText: "Fixture Mother" }),
+  ).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "Stagnant water nearby", exact: true })
+    .selectOption("yes");
+  await page
+    .getByLabel("Water collection locations", { exact: true })
+    .fill("Synthetic report: beside the back wall.");
+  await page
+    .getByRole("checkbox", {
+      name: "Standing water prevention discussed",
+      exact: true,
+    })
+    .check();
+  await page
+    .getByRole("checkbox", {
+      name: "Mosquito prevention discussed",
+      exact: true,
+    })
+    .check();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await noOverflow(page);
+  await capture(page, testInfo, "rainy-care-390");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await selectHealthMember(page, "Fixture Mother");
+  await expect(
+    page.getByRole("combobox", { name: "Health discussion", exact: true }),
+  ).toHaveValue("");
+  await expect(
+    page.getByLabel("Reported symptoms and health history", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel(/^Pregnancy duration/)).toHaveCount(0);
+  await section(page, "Review");
+  await page
+    .getByRole("checkbox", { name: "I have reviewed this visit.", exact: true })
+    .check();
+  await page.getByRole("button", { name: "Finish visit", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "All recorded.", exact: true }),
+  ).toBeVisible();
 });
 
 test("all six interface languages preserve names, custom choices and free-text answers", async ({
@@ -1000,7 +1189,6 @@ test("full-conversation review waits for backfill and preserves edits made while
                   memberId: survey.members[0].id,
                   age: 30,
                   weight: 60,
-                  phone: "9876543210",
                   relation: "father",
                   evidence: segment.text,
                   attribution: {
@@ -1009,6 +1197,13 @@ test("full-conversation review waits for backfill and preserves edits made while
                     evidence: segment.text,
                     segmentId: segment.id,
                   },
+                },
+              ],
+              householdFields: [
+                {
+                  fieldId: "householdPhone",
+                  value: "9876543210",
+                  evidence: segment.text,
                 },
               ],
               notes: [],
@@ -1035,40 +1230,50 @@ test("full-conversation review waits for backfill and preserves edits made while
   await section(page, "Review");
   await expect.poll(() => checks).toBe(1);
   await expect(
-    page.getByText("Checking the full conversation…", { exact: true }),
+    page.getByText("Checking the conversation for these answers…", {
+      exact: true,
+    }),
   ).toBeVisible();
-  await expect(page.getByText("Age is required.", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByText("Age is required.", { exact: true }),
+  ).toBeVisible();
   await section(page, "Family");
   await page.getByLabel(/^Age/).fill("31");
+  await selectHealthMember(page, "Backfill Fixture Person");
+  await page
+    .getByRole("combobox", { name: "Health discussion", exact: true })
+    .selectOption("concerns");
   await page.getByLabel(/^Weight/).fill("63.05");
-  await page.getByLabel("Phone number", { exact: true }).fill("1234567890");
-  await page.getByLabel("Phone number", { exact: true }).fill("");
+  await section(page, "Household");
+  await page
+    .getByLabel("Household phone number", { exact: true })
+    .fill("1234567890");
+  await page.getByLabel("Household phone number", { exact: true }).fill("");
   release();
   await section(page, "Review");
-  await expect(
-    page.getByText("Conversation checked", { exact: true }),
-  ).toBeVisible();
+  await expect.poll(() => checks).toBe(2);
   await section(page, "Family");
   await expect(page.getByLabel(/^Age/)).toHaveValue("31");
-  await expect(page.getByLabel(/^Weight/)).toHaveValue("63.05");
-  await expect(page.getByLabel("Phone number", { exact: true })).toHaveValue(
-    "",
-  );
   await expect(
     page.getByRole("combobox", { name: "Relationship", exact: true }),
   ).toHaveValue("father");
   await expect(
     page.getByRole("combobox", { name: "Sex", exact: true }),
   ).toHaveValue("male");
+  await selectHealthMember(page, "Backfill Fixture Person");
+  await expect(page.getByLabel(/^Weight/)).toHaveValue("63.05");
+  await section(page, "Household");
+  await expect(
+    page.getByLabel("Household phone number", { exact: true }),
+  ).toHaveValue("");
   expect(checks).toBe(2);
 });
 
-test("finishing waits for a recovered conversation check and requires review of its new answers", async ({
+test("transient conversation checks retry automatically and Finish reviews recovered answers without an extra acknowledgment", async ({
   page,
 }) => {
   test.setTimeout(60000);
+  await page.clock.install();
   let checks = 0;
   let release: () => void = () => {};
   const gate = new Promise<void>((resolve) => {
@@ -1163,21 +1368,34 @@ test("finishing waits for a recovered conversation check and requires review of 
     dialog.getByLabel("Add conversation text", { exact: true }),
   ).toHaveValue("");
   await dialog.getByRole("button", { name: "Close dialog" }).click();
+  const firstFailure = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/reconcile") && response.status() === 503,
+  );
   await section(page, "Review");
+  await (await firstFailure).finished();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
   await expect(
-    page.getByText("Conversation not checked", { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("checkbox", {
+    page.getByRole("checkbox", {
       name: "I checked the conversation and answers manually.",
       exact: true,
-    })
-    .check();
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Conversation not checked", { exact: true }),
+  ).toHaveCount(0);
+  await expect.poll(() => checks).toBe(1);
+  await page.clock.fastForward(21000);
+  await expect.poll(() => checks).toBe(2);
   await page
     .getByRole("checkbox", { name: "I have reviewed this visit.", exact: true })
     .check();
   await page.getByRole("button", { name: "Finish visit", exact: true }).click();
-  await expect.poll(() => checks).toBe(2);
   await expect(
     page.getByRole("button", { name: "Start recording", exact: true }),
   ).toBeDisabled();

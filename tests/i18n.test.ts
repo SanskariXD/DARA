@@ -14,7 +14,13 @@ import {
   FAMILY_HEALTH_TEMPLATE,
   LEGACY_FAMILY_HEALTH_TEMPLATE,
   PREGNANCY_FOLLOW_UP_TEMPLATE,
+  RAINY_SEASON_TEMPLATE,
 } from "../src/lib/survey";
+
+import {
+  PREGNANCY_CARE_FIELDS,
+  RAINY_SEASON_FIELDS,
+} from "../src/lib/survey-care";
 
 const languages = APP_LANGUAGES.filter((l) => l !== "en");
 describe("bundled UI translations", () => {
@@ -36,6 +42,7 @@ describe("bundled UI translations", () => {
       FAMILY_HEALTH_TEMPLATE,
       LEGACY_FAMILY_HEALTH_TEMPLATE,
       PREGNANCY_FOLLOW_UP_TEMPLATE,
+      RAINY_SEASON_TEMPLATE,
     ]) {
       for (const field of template.fields) {
         expect(UI_MESSAGES[field.label], field.label).toBeDefined();
@@ -44,12 +51,28 @@ describe("bundled UI translations", () => {
       }
     }
   });
+  it("localizes pregnancy care, rainy-season questions, and counselling choices", () => {
+    for (const field of [...PREGNANCY_CARE_FIELDS, ...RAINY_SEASON_FIELDS]) {
+      for (const language of languages) {
+        expect(
+          translateFieldLabel(language, field),
+          `${language}: ${field.id}`,
+        ).not.toBe(field.label);
+        for (const option of field.options ?? []) {
+          expect(
+            translateOptionLabel(language, field, option),
+            `${language}: ${field.id}/${option.value}`,
+          ).not.toBe(option.label);
+        }
+      }
+    }
+  });
   it("covers every literal translation call rendered in the app", () => {
     const source = readFileSync(
       new URL("../src/components/dara-app.tsx", import.meta.url),
       "utf8",
     );
-    for (const match of source.matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)) {
+    for (const match of source.matchAll(/\bt\(\s*"((?:[^"\\]|\\.)*)"/g)) {
       const key = JSON.parse(`"${match[1]}"`);
       expect(UI_MESSAGES[key], key).toBeDefined();
     }

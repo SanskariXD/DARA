@@ -155,25 +155,73 @@ export function createSurveyRepository(
     )
       return;
     const canonical = getExampleWorkspace();
+    const oldCanonical = getExampleWorkspace(1);
+    const priorSeedExists = !!(await meta.get("examples:1"));
     for (const home of canonical.households) {
       const existing = await homes.get(home.id);
-      // An existing user record with a coinciding ID is never repurposed as an example.
       if (existing && existing.value.source !== "example") continue;
-      if (!existing)
+      const newSurvey = canonical.surveys.find(
+        (item) => item.householdId === home.id,
+      )!;
+      const savedSurvey = await surveys.get(newSurvey.id);
+      if (!existing) {
+        // A conflicting survey ID is another record, never an invitation to repurpose it.
+        if (savedSurvey) continue;
         await homes.add({
           id: home.id,
           value: withoutGeneration(clone(home)),
           version: 1,
         });
-      for (const survey of canonical.surveys.filter(
-        (item) => item.householdId === home.id,
-      )) {
-        if (!(await surveys.get(survey.id)))
-          await surveys.add({
-            id: survey.id,
-            householdId: survey.householdId,
-            value: withoutGeneration(clone(survey)),
-            version: 1,
+        await surveys.add({
+          id: newSurvey.id,
+          householdId: home.id,
+          value: withoutGeneration(clone(newSurvey)),
+          version: 1,
+        });
+        continue;
+      }
+      if (!savedSurvey && !priorSeedExists) {
+        await surveys.add({
+          id: newSurvey.id,
+          householdId: home.id,
+          value: withoutGeneration(clone(newSurvey)),
+          version: 1,
+        });
+        continue;
+      }
+      const oldHome = oldCanonical.households.find(
+        (item) => item.id === home.id,
+      );
+      const oldSurvey = oldCanonical.surveys.find(
+        (item) => item.id === newSurvey.id,
+      );
+      const history = await surveys
+        .where("householdId")
+        .equals(home.id)
+        .toArray();
+      const pristine =
+        oldHome &&
+        oldSurvey &&
+        savedSurvey &&
+        existing.value.source === "example" &&
+        equal(withoutGeneration(existing.value), oldHome) &&
+        equal(withoutGeneration(savedSurvey.value), oldSurvey) &&
+        history.every((row) => row.id === newSurvey.id);
+      // Only untouched released examples may be refreshed, including their fictional
+      // completed snapshots. User history and edits make the whole pair ineligible.
+      if (pristine) {
+        if (!equal(existing.value, home))
+          await homes.put({
+            id: home.id,
+            value: withoutGeneration(clone(home)),
+            version: existing.version + 1,
+          });
+        if (!equal(savedSurvey.value, newSurvey))
+          await surveys.put({
+            id: newSurvey.id,
+            householdId: home.id,
+            value: withoutGeneration(clone(newSurvey)),
+            version: savedSurvey.version + 1,
           });
       }
     }
@@ -203,9 +251,12 @@ export function createSurveyRepository(
       await seedExamples(marker.generation);
       // Migrate only editable drafts. Completed snapshots are never rewritten by an upgrade.
       for (const row of await surveys.toArray()) {
-        if (row.value.status !== "draft" || row.value.templateVersion >= 2)
+        if (row.value.status !== "draft" || row.value.templateVersion >= 3)
           continue;
         const migrated = migrateDraftSurvey(parseSurvey(row.value));
+        // An upgrade must never replace a readable draft with a snapshot that
+        // the current reader cannot hydrate. Keep the original for a later fix.
+        if (!surveySchema.safeParse(migrated).success) continue;
         if (!equal(migrated, row.value))
           await surveys.put({
             ...row,

@@ -440,7 +440,12 @@ describe("original-history reconciliation boundary", () => {
     };
     expect(retainMissingProposals(result, survey, segment).members).toEqual([]);
     survey.members[0].values.healthHistory = "Existing factual report";
-    delete survey.members[0].meta.healthHistory;
+    survey.members[0].meta.healthHistory = {
+      source: "manual",
+      manuallyProtected: true,
+      revision: survey.revision,
+      segmentIndex: 2,
+    };
     expect(retainMissingProposals(result, survey, segment).members).toEqual([]);
   });
   it("rejects absent v2 attribution, fabricated original proof and invented field evidence", () => {

@@ -45,6 +45,11 @@ const aliases: Record<string, string[]> = {
     "ಗಂಡನಿಗೆ",
     "ಪತಿ",
     "ಪತಿಗೆ",
+    "ಯಜಮಾನ",
+    "ಯಜಮಾನರು",
+    "ಯಜಮಾನರಿಗೆ",
+    "ಯಜಮಾನನಿಗೆ",
+    "ಯಜಮಾನರ",
     "पति",
     "पति को",
     "पती",
@@ -320,7 +325,34 @@ export function evidenceSupportsRelationship(
   text: string,
   relationship: string,
 ): boolean {
-  return mentionedRelationships(text).includes(
-    normalizeRelationship(relationship),
+  return mentionedRelationships(text).some((mentioned) =>
+    relationshipsCompatible(mentioned, relationship),
+  );
+}
+
+/** Generic spouse and a gendered spouse are compatible, never husband and wife. */
+export function relationshipsCompatible(left: string, right: string): boolean {
+  const a = normalizeRelationship(left),
+    b = normalizeRelationship(right);
+  return (
+    a === b ||
+    (a === "spouse" && ["husband", "wife"].includes(b)) ||
+    (b === "spouse" && ["husband", "wife"].includes(a))
+  );
+}
+export function lastRelationshipReferenceIndex(
+  text: string,
+  relationship: string,
+): number {
+  const source = normalizeIdentityText(text);
+  return Math.max(
+    -1,
+    ...Object.entries(aliases)
+      .filter(([relation]) => relationshipsCompatible(relation, relationship))
+      .flatMap(([, words]) =>
+        words
+          .filter((word) => containsIdentityReference(source, word))
+          .map((word) => source.lastIndexOf(normalizeIdentityText(word))),
+      ),
   );
 }

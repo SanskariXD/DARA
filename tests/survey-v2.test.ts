@@ -21,7 +21,11 @@ import {
 const NOW = "2026-11-13T14:00:00.000Z";
 const fresh = () =>
   createSurvey(
-    { householdId: "home", workspaceGeneration: "generation-one" },
+    {
+      householdId: "home",
+      workspaceGeneration: "generation-one",
+      templateVersion: 2,
+    },
     NOW,
     "v2-survey",
   );
@@ -161,7 +165,11 @@ describe("v2 questionnaire and relationships", () => {
     expect(isSurveyFieldVisible(history, s.members[0])).toBe(true);
   });
   it("supports a blank pregnancy-focused template without inventing pregnancy", () => {
-    const s = createSurvey({ householdId: "home", kind: "pregnancy" });
+    const s = createSurvey({
+      householdId: "home",
+      kind: "pregnancy",
+      templateVersion: 2,
+    });
     expect(s.templateId).toBe("pregnancy-follow-up");
     expect(s.templateVersion).toBe(2);
     expect(s.members).toEqual([]);
@@ -566,7 +574,7 @@ describe("safe draft migration and historical compatibility", () => {
     s = editSurveyField(s, id, "notes", "Needs transport");
     s = editSurveyField(s, id, "systolic", 120);
     const migrated = migrateDraftSurvey(s);
-    expect(migrated.templateVersion).toBe(2);
+    expect(migrated.templateVersion).toBe(3);
     expect(migrated.revision).toBe(s.revision + 1);
     expect(migrated.workspaceGeneration).toBe("g");
     expect(migrated.members[0].values.healthHistory).toBe(

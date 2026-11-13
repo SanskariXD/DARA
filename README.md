@@ -9,7 +9,7 @@ DARA is an installable household register with fresh family-health surveys, edit
 ## Use the workspace
 
 1. Open the workspace using the private access code supplied by its owner.
-2. Open one of five clearly marked fictional examples, or add your own household. Start a fresh family-health or pregnancy survey; new visits begin blank.
+2. Open one of five clearly marked fictional examples, or add your own household. Start a fresh family-health or pregnancy survey, or a rainy-season visit that reuses the known family roster with fresh health questions.
 3. Enter the family size, or record the conversation. A stated count creates that many blank member sections automatically. Add a member or a custom household/member field manually when necessary.
 4. DARA sends short WAV speech segments to Gnani, then finalized text to Gemini for structured field proposals. Names, ages, relationships and other answers go to the corresponding member when supported by the conversation. Symptoms, existing conditions and operations stay together in the person’s health history. Extra household information goes into one household note.
 5. Manual edits stay protected. Health cards expand for reported concerns; an unasked health question remains “Not discussed”. A background check searches earlier conversation passages for missed answers before final review. Check uncertain attribution, competing suggestions and required answers before completing the visit.
@@ -21,7 +21,7 @@ The **Conversation** sheet shows the original text. Text can also be entered man
 
 - Gnani Vach REST STT, Prisma v3.0: 16 kHz mono PCM WAV and automatic Indic/English language detection, including mixed-language speech.
 - Locally bundled interface translations: English, Kannada, Hindi, Telugu, Tamil and Malayalam. The interface language does not restrict speech.
-- Gemini structured extraction with a validated schema, field allowlists, explicit person references and verbatim transcript evidence. Separate fill-only conversation reconciliation checks earlier passages without changing manual edits or newer answers.
+- Gemini structured extraction with a validated schema, field allowlists, explicit person references and verbatim transcript evidence. Background reconciliation checks earlier passages for missing answers and safely recoverable narrative details without changing manual edits or newer corrections.
 - Private workspace access through a signed HttpOnly cookie. Provider credentials remain on the server.
 - IndexedDB draft/history storage on the current device and browser origin; offline manual entry and an installable PWA shell.
 
@@ -54,11 +54,12 @@ CI uses its own synthetic workspace code and mocked provider responses for brows
 - [Family survey specification](docs/NEXT_REBUILD.md)
 - [Provider contracts and verification](docs/PROVIDERS.md)
 - [Five-project research](docs/RESEARCH.md)
+- [Care workflows and official source rationale](docs/CARE-WORKFLOWS.md)
 - [Release record](docs/RELEASE.md)
 
 ## Deployment
 
-The Vercel project is `dara` in `Sanskari's projects`. Source is deployed directly because Vercel's GitHub installation does not currently grant DARA repository access. Enable that access and connect the repository to get automatic future deployments. Real credentials belong in encrypted/sensitive environment variables; `.env.local` is ignored.
+The Vercel project is `dara` in `Sanskari's projects`. The connected GitHub repository triggers production builds from `main`; the Git deployment was verified on 13 November 2026. Real credentials belong in encrypted/sensitive environment variables; `.env.local` is ignored.
 
 ## License
 

@@ -2,17 +2,24 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Dexie from "dexie";
 import {
+  getExampleWorkspace,
+  EXAMPLE_SEED_VERSION,
+} from "../src/data/survey-examples";
+import {
   createSurveyRepository,
   SurveyStorageConflict,
   SurveyStorageDataError,
   type SurveyHousehold,
 } from "../src/lib/survey-db";
 import {
+  addCustomSurveyField,
   createSurvey,
   editSurveyField,
   completeSurvey,
+  surveySchema,
   type Survey,
 } from "../src/lib/survey";
+import * as surveyDomain from "../src/lib/survey";
 
 const instances: Array<ReturnType<typeof createSurveyRepository>> = [];
 const databases = new Set<string>();
@@ -250,7 +257,7 @@ describe("empty device survey workspace", () => {
 });
 
 describe("example seeding, migration and explicit reset", () => {
-  it("seeds exactly two antenatal and three general example households once", async () => {
+  it("seeds exactly two antenatal, two general and one rainy-season example households once", async () => {
     const { repo, name } = open(undefined, true);
     const first = await repo.loadWorkspace();
     expect(first.households).toHaveLength(5);
@@ -264,7 +271,10 @@ describe("example seeding, migration and explicit reset", () => {
     ).toHaveLength(2);
     expect(
       first.surveys.filter((survey) => survey.templateId === "family-health"),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
+    expect(
+      first.surveys.filter((survey) => survey.templateId === "rainy-season"),
+    ).toHaveLength(1);
     const { repo: reloaded } = open(name, true);
     expect(await reloaded.loadWorkspace()).toEqual(first);
   });
@@ -466,7 +476,7 @@ describe("example seeding, migration and explicit reset", () => {
     const { repo: upgraded } = open(name, true);
     const data = await upgraded.loadWorkspace();
     const migrated = data.surveys.find((survey) => survey.id === legacy.id)!;
-    expect(migrated.templateVersion).toBe(2);
+    expect(migrated.templateVersion).toBe(3);
     expect(migrated.members[0].values.symptoms).toBe("Reports an old cough");
     expect(migrated.members[0].values.healthHistory).toBe(
       "Reports an old cough",
@@ -480,5 +490,244 @@ describe("example seeding, migration and explicit reset", () => {
       completedRow,
     );
     rawAfter.close();
+  });
+
+  it("opens the largest valid released draft after migration without losing custom answers", async () => {
+    const { repo, name } = open();
+    await repo.loadWorkspace();
+    await repo.saveHousehold(household());
+    let legacy = createSurvey(
+      { householdId: "home-1", templateVersion: 2 },
+      "2026-11-13T12:00:00Z",
+      "full-legacy-draft",
+    );
+    while (legacy.fields.length < 100)
+      legacy = addCustomSurveyField(legacy, {
+        label: `Additional question ${legacy.fields.length}`,
+        scope: "household",
+        type: "text",
+      });
+    const customId = legacy.fields.at(-1)!.id;
+    legacy = editSurveyField(
+      legacy,
+      null,
+      customId,
+      "Keep this recorded answer",
+    );
+    expect(surveySchema.safeParse(legacy).success).toBe(true);
+    const raw = new Dexie(name);
+    await raw.open();
+    try {
+      await raw.table("surveys").put({
+        id: legacy.id,
+        householdId: legacy.householdId,
+        value: legacy,
+        version: 9,
+      });
+      const { repo: upgraded } = open(name);
+      const data = await upgraded.loadWorkspace();
+      const migrated = data.surveys.find((survey) => survey.id === legacy.id)!;
+      expect(migrated.templateVersion).toBe(3);
+      expect(migrated.fields.length).toBeGreaterThan(100);
+      expect(migrated.household.values[customId]).toBe(
+        "Keep this recorded answer",
+      );
+      expect(migrated.fields.filter((field) => field.custom)).toEqual(
+        legacy.fields.filter((field) => field.custom),
+      );
+      expect(surveySchema.safeParse(migrated).success).toBe(true);
+      const stored = await raw.table("surveys").get(legacy.id);
+      expect(stored.version).toBe(10);
+      expect(stored.value).toEqual(withoutEpoch(migrated));
+      expect((await upgraded.loadWorkspace()).surveys).toEqual(data.surveys);
+      expect(await raw.table("surveys").get(legacy.id)).toEqual(stored);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("keeps a readable original draft if an upgrade produces an invalid snapshot", async () => {
+    const { repo, name } = open();
+    await repo.loadWorkspace();
+    await repo.saveHousehold(household());
+    const legacy = createSurvey(
+      { householdId: "home-1", templateVersion: 2 },
+      "2026-11-13T12:00:00Z",
+      "guarded-legacy-draft",
+    );
+    const originalRow = {
+      id: legacy.id,
+      householdId: legacy.householdId,
+      value: legacy,
+      version: 4,
+    };
+    const raw = new Dexie(name);
+    await raw.open();
+    const migration = vi.spyOn(surveyDomain, "migrateDraftSurvey");
+    migration.mockReturnValue({ ...legacy, templateVersion: 3, fields: [] });
+    try {
+      await raw.table("surveys").put(originalRow);
+      const { repo: upgraded } = open(name);
+      const data = await upgraded.loadWorkspace();
+      expect(data.households).toHaveLength(1);
+      expect(withoutEpoch(data.surveys[0])).toEqual(legacy);
+      expect(await raw.table("surveys").get(legacy.id)).toEqual(originalRow);
+    } finally {
+      migration.mockRestore();
+      raw.close();
+    }
+  });
+});
+
+describe("v0.4 example refresh", () => {
+  async function seedReleasedExamples(
+    name: string,
+    generation: string,
+    modify?: (data: ReturnType<typeof getExampleWorkspace>) => void,
+  ) {
+    const baseline = getExampleWorkspace(1);
+    modify?.(baseline);
+    const raw = new Dexie(name);
+    await raw.open();
+    await raw.transaction(
+      "rw",
+      raw.table("households"),
+      raw.table("surveys"),
+      raw.table("meta"),
+      async () => {
+        await raw.table("households").bulkPut(
+          baseline.households.map((value) => ({
+            id: value.id,
+            value,
+            version: 1,
+          })),
+        );
+        await raw.table("surveys").bulkPut(
+          baseline.surveys.map((value) => ({
+            id: value.id,
+            householdId: value.householdId,
+            value,
+            version: 1,
+          })),
+        );
+        await raw.table("meta").put({ id: "examples:1", generation });
+      },
+    );
+    raw.close();
+    return baseline;
+  }
+
+  it("refreshes only pristine released examples to enriched pregnancy and rainy-season surveys", async () => {
+    const { repo, name } = open();
+    const { generation } = await repo.loadWorkspace();
+    const baseline = await seedReleasedExamples(name, generation);
+    expect(
+      baseline.surveys.every((survey) => survey.templateVersion === 2),
+    ).toBe(true);
+    const { repo: upgraded } = open(name, true);
+    const data = await upgraded.loadWorkspace();
+    expect(data.households).toHaveLength(5);
+    const nandini = data.surveys.find(
+      (survey) => survey.id === "dara-example-survey-nandini",
+    )!;
+    expect(nandini.templateVersion).toBe(3);
+    expect(nandini.members[0].values.pregnancyMonths).toBe(2);
+    expect(nandini.members[0].values.pregnancyWeeks).toBeUndefined();
+    expect(nandini.members[0].values.pregnancyInjectionCount).toBe(1);
+    expect(nandini.members[0].values.pregnancyInjections).toContain(
+      "Td first dose",
+    );
+    expect(nandini.members[0].values.mcpCardStatus).toBe("has-card");
+    expect(nandini.members[0].values.careNutritionDiscussed).toBe("done");
+    const meena = data.surveys.find(
+      (survey) => survey.id === "dara-example-survey-meena",
+    )!;
+    expect(meena.templateId).toBe("rainy-season");
+    expect(meena.members.map((member) => member.values.name)).toEqual([
+      "Meena Kumar",
+      "Prakash Kumar",
+      "Aditya Kumar",
+      "Kavya Kumar",
+    ]);
+    expect(meena.household.values.stagnantWater).toBe("yes");
+    expect(meena.household.values.householdNotes).toContain("To do:");
+    expect(meena.household.values.rainyWaterDiscussed).toBe("done");
+    const raw = new Dexie(name);
+    await raw.open();
+    const updatedRows = await raw.table("surveys").toArray();
+    expect(
+      await raw.table("meta").get(`examples:${EXAMPLE_SEED_VERSION}`),
+    ).toBeDefined();
+    await upgraded.loadWorkspace();
+    expect(await raw.table("surveys").toArray()).toEqual(updatedRows);
+    raw.close();
+  });
+
+  it("preserves edited example answers, edited household identities and extra user history", async () => {
+    const { repo, name } = open();
+    const { generation } = await repo.loadWorkspace();
+    const baseline = await seedReleasedExamples(name, generation, (data) => {
+      const index = data.surveys.findIndex(
+        (survey) => survey.id === "dara-example-survey-nandini",
+      );
+      data.surveys[index] = editSurveyField(
+        data.surveys[index],
+        data.surveys[index].members[0].id,
+        "healthHistory",
+        "User-entered statement to retain",
+      );
+      data.households.find(
+        (home) => home.id === "dara-example-home-meena",
+      )!.label = "Family's chosen label";
+      data.surveys.push(
+        createSurvey(
+          {
+            householdId: "dara-example-home-mary",
+            repeatOf: "dara-example-survey-mary",
+          },
+          "2026-11-13T12:00:00Z",
+          "user-repeat",
+        ),
+      );
+    });
+    const oldMeena = baseline.surveys.find(
+      (survey) => survey.id === "dara-example-survey-meena",
+    )!;
+    const oldMary = baseline.surveys.find(
+      (survey) => survey.id === "dara-example-survey-mary",
+    )!;
+    const { repo: upgraded } = open(name, true);
+    const data = await upgraded.loadWorkspace();
+    const nandini = data.surveys.find(
+      (survey) => survey.id === "dara-example-survey-nandini",
+    )!;
+    expect(nandini.members[0].values.healthHistory).toBe(
+      "User-entered statement to retain",
+    );
+    expect(nandini.members[0].values.pregnancyWeeks).toBe(24);
+    expect(nandini.members[0].values.pregnancyMonths).toBeUndefined();
+    expect(
+      data.households.find((home) => home.id === "dara-example-home-meena")
+        ?.label,
+    ).toBe("Family's chosen label");
+    expect(
+      withoutEpoch(data.surveys.find((survey) => survey.id === oldMeena.id)!),
+    ).toEqual(oldMeena);
+    expect(
+      withoutEpoch(data.surveys.find((survey) => survey.id === oldMary.id)!),
+    ).toEqual(oldMary);
+    expect(data.surveys.some((survey) => survey.id === "user-repeat")).toBe(
+      true,
+    );
+    const restored = await upgraded.resetUserEntries();
+    expect(restored.households).toHaveLength(5);
+    expect(restored.surveys).toHaveLength(5);
+    expect(
+      restored.surveys.find((survey) => survey.id === oldMeena.id)?.templateId,
+    ).toBe("rainy-season");
+    expect(
+      restored.surveys.find((survey) => survey.id === nandini.id)?.members[0]
+        .values.pregnancyMonths,
+    ).toBe(2);
   });
 });

@@ -88,7 +88,7 @@ This rebuild is implemented alongside the reference-led redesign and live provid
 - Main agent: integration, API routes, PWA, verification coordination, GitHub and Vercel release.
 
 ## Remaining production infrastructure and validation
-- [ ] Grant the Vercel GitHub installation DARA repository access, then connect it for automatic Git deployments.
+- [x] Verify automatic Git deployments: production commit `62a4cc7` deployed through the Git integration on 13 November 2026.
 - [ ] Provision real authentication and household-scoped database access; verify row-level access.
 - [x] Connect Gnani speech transcription through bounded WAV requests and verify a synthetic audio trace. Streaming WebSockets are not required for this implementation.
 - [x] Connect Gemini structured extraction and verify a synthetic multi-person survey.
@@ -99,7 +99,7 @@ This rebuild is implemented alongside the reference-led redesign and live provid
 ## Implementation notes
 
 - React Hook Form was researched but not installed in the final app: the small fixed form uses stable controlled inputs and the shared patch engine directly. Dexie and Zod are reused dependencies.
-- Vercel project `dara` created successfully. Automatic Git linking was rejected because the Vercel GitHub installation does not currently grant DARA access. Direct source deployment is the release path.
+- Vercel project `dara` created successfully. Initial Git linking was unavailable; direct source deployment was used for early releases. Git-triggered production deployment is now verified.
 - The local Chromium runner is restricted by the execution environment. All five browser scenarios passed in GitHub Actions; deployed visual and functional verification also passed.
 
 ## Previous release checkpoint (0.1)
@@ -155,3 +155,20 @@ Privacy and validation boundaries remain as documented in docs/INTEGRATIONS.md. 
 - Production deployment: `dpl_AVuDD9Vx9z1ENSTZdq5kJ1W77nVJ`; same public address and private workspace code.
 - Source and client-bundle secret scans passed. Hosted reconciliation recovered only the expected synthetic missing answer.
 - Release details and verification record: [docs/RELEASE.md](docs/RELEASE.md).
+
+
+## Release 0.4 — Reliable health capture and care visits
+
+- [x] Reproduce fresh-person health rejection through provider decoding, domain application and persistence.
+- [x] Repair introduction/name attribution and Kannada spouse references while preserving ambiguous-person protection.
+- [x] Verify household notes and missing narrative recovery without overwriting manual corrections.
+- [x] Replace prominent check gates with automatic background review and small missing-answer feedback.
+- [x] Keep one household phone; move weight to expanded health.
+- [x] Add pregnancy/postnatal care details and evidence-backed counselling checklists.
+- [x] Add rainy-season visits with reusable family identities, fresh health/environment answers and prevention checklist.
+- [x] Upgrade untouched examples safely, including two pregnancy visits and a four-person rainy visit.
+- [x] Translate new controls in all six interface languages.
+- [ ] Verify real synthetic provider calls, regression tests, browser flows and responsive screenshots.
+- [ ] Publish source, confirm Git-triggered production deployment and check hosted behavior.
+
+Clinical field rationale and source links: [docs/CARE-WORKFLOWS.md](docs/CARE-WORKFLOWS.md).

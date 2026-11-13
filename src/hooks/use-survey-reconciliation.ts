@@ -34,6 +34,8 @@ export function useSurveyReconciliation(props: Props) {
   const [error, setError] = useState<string | null>(null);
   const completed = useRef(new Map<string, string>());
   const lastStarted = useRef(new Map<string, number>());
+  const failures = useRef(new Map<string, number>());
+  const wasOffline = useRef(props.offline);
   const active = useRef<Running | null>(null);
   const alive = useRef(true);
   const fingerprint = props.survey
@@ -81,6 +83,7 @@ export function useSurveyReconciliation(props: Props) {
       }
       return false;
     }
+    const attemptFingerprint = surveyConversationFingerprint(starting);
     const controller = new AbortController();
     const job: Running = {
       id: starting.id,
@@ -177,6 +180,7 @@ export function useSurveyReconciliation(props: Props) {
           return false;
         }
         completed.current.set(ending.id, surveyConversationFingerprint(ending));
+        failures.current.delete(attemptFingerprint);
         if (alive.current) {
           setStatus("complete");
           setError(null);
@@ -191,6 +195,10 @@ export function useSurveyReconciliation(props: Props) {
           alive.current &&
           active.current === job
         ) {
+          failures.current.set(
+            attemptFingerprint,
+            (failures.current.get(attemptFingerprint) ?? 0) + 1,
+          );
           setError(
             reason instanceof Error
               ? reason.message
@@ -225,18 +233,28 @@ export function useSurveyReconciliation(props: Props) {
     setProgress({ checked: 0, total: 0 });
   }, [props.survey?.id, props.survey?.workspaceGeneration, cancel]);
   useEffect(() => {
+    // A connection returning is a fresh opportunity, even after bounded retries.
+    if (wasOffline.current && !props.offline) {
+      failures.current.clear();
+      setStatus("idle");
+      setError(null);
+    }
+    wasOffline.current = props.offline;
+  }, [props.offline]);
+  useEffect(() => {
     if (
       !props.enabled ||
       props.offline ||
       isCurrent ||
       status === "checking" ||
-      status === "error" ||
+      (failures.current.get(fingerprint) ?? 0) >= 3 ||
       !props.survey
     )
       return;
     const wait = Math.max(
       1000,
-      20000 - (Date.now() - (lastStarted.current.get(props.survey.id) ?? 0)),
+      ((failures.current.get(fingerprint) ?? 0) > 1 ? 60000 : 20000) -
+        (Date.now() - (lastStarted.current.get(props.survey.id) ?? 0)),
     );
     const timer = setTimeout(() => {
       void run();

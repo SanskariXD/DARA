@@ -49,9 +49,15 @@ import {
   applySurveyExtraction,
   completeSurvey,
   createSurvey,
+  createRainySurveyFromPrior,
   editSurveyField,
   getMemberHealthStatus,
   isSurveyFieldVisible,
+  isPregnancyCareRelevant,
+  PREGNANCY_FIELD_IDS,
+  PREGNANCY_CHECKLIST_IDS,
+  RAINY_FIELD_IDS,
+  RAINY_CHECKLIST_IDS,
   migrateDraftSurvey,
   removeSurveyMember,
   resolveSurveyConflict,
@@ -61,6 +67,7 @@ import {
 } from "@/lib/survey";
 import type {
   Survey,
+  SurveyAnswerRecord,
   SurveyFieldDefinition,
   SurveyMember,
   SurveyReviewIssue,
@@ -84,6 +91,15 @@ type Dialog =
   | "delete-household"
   | "reset-entries"
   | null;
+type ReviewReport = {
+  id: string;
+  memberId: string | null;
+  messages: string[];
+  controlledMessages: string[];
+  evidence: string[];
+  uncertaintyIds: string[];
+  noteIds: string[];
+};
 const STEPS: { id: Step; label: string }[] = [
   { id: "household", label: "Household" },
   { id: "family", label: "Family" },
@@ -561,7 +577,7 @@ function DaraWorkspace({
     [notice, setNotice] = useState(""),
     [offline, setOffline] = useState(false),
     [reviewed, setReviewed] = useState(false),
-    [manualCheckAcknowledged, setManualCheckAcknowledged] = useState(false),
+    [assignReport, setAssignReport] = useState<ReviewReport | null>(null),
     [busy, setBusy] = useState(false),
     [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">(
       "saved",
@@ -591,6 +607,12 @@ function DaraWorkspace({
   saveRef.current = saveSurvey;
   const household = households.find((h) => h.id === householdId) ?? null;
   const activeMember = survey?.members.find((m) => m.id === healthMemberId);
+  const showPregnancyCare =
+    !!activeMember &&
+    (isPregnancyCareRelevant(activeMember) ||
+      [...PREGNANCY_FIELD_IDS].some(
+        (id) => revealedFieldKey === `${activeMember.id}.${id}`,
+      ));
   const issues = useMemo(() => (survey ? reviewSurvey(survey) : []), [survey]);
   const selectedSurveys = useMemo(
     () =>
@@ -611,7 +633,6 @@ function DaraWorkspace({
         currentRef.current = next;
         setSurvey(next);
         setReviewed(false);
-        setManualCheckAcknowledged(false);
         setSaveStatus("saving");
       } catch (e) {
         setNotice(
@@ -722,10 +743,54 @@ function DaraWorkspace({
     getProtectedKeys,
   });
   const checkUnavailable = offline || reconciliation.status === "error";
-  const reviewIssues = issues.filter(
-    (issue) =>
-      issue.kind !== "missing" || reconciliation.isCurrent || checkUnavailable,
-  );
+  const reviewIssues = issues;
+  const reviewReports = useMemo(() => {
+    const groups = new Map<string, ReviewReport>();
+    const add = (
+      item: {
+        id: string;
+        memberId: string | null;
+        segmentId?: string;
+        evidence: string;
+      },
+      kind: "uncertainty" | "note",
+      text: string,
+    ) => {
+      const duplicate = [...groups.values()].find(
+        (group) =>
+          group.memberId === item.memberId &&
+          group.evidence.includes(item.evidence),
+      );
+      const key =
+        duplicate?.id ??
+        `${item.memberId ?? "household"}:${item.segmentId ?? item.evidence}`;
+      const group = groups.get(key) ?? {
+        id: key,
+        memberId: item.memberId,
+        messages: [],
+        controlledMessages: [],
+        evidence: [],
+        uncertaintyIds: [],
+        noteIds: [],
+      };
+      if (text && !group.messages.includes(text)) group.messages.push(text);
+      if (kind === "uncertainty" && !group.controlledMessages.includes(text))
+        group.controlledMessages.push(text);
+      if (item.evidence && !group.evidence.includes(item.evidence))
+        group.evidence.push(item.evidence);
+      (kind === "uncertainty" ? group.uncertaintyIds : group.noteIds).push(
+        item.id,
+      );
+      groups.set(key, group);
+    };
+    survey?.uncertainties
+      .filter((item) => !item.resolved)
+      .forEach((item) => add(item, "uncertainty", item.message));
+    survey?.notes
+      .filter((item) => !item.reviewed)
+      .forEach((item) => add(item, "note", item.text));
+    return [...groups.values()];
+  }, [survey]);
   useEffect(() => {
     if (view === "survey" && step === "review" && survey?.status === "draft") {
       void reconciliation.ensureReviewed();
@@ -852,30 +917,49 @@ function DaraWorkspace({
     home: SurveyHousehold,
     existing?: Survey,
     repeatOf?: string,
-    templateId?: "family-health" | "pregnancy-follow-up",
+    templateId?: "family-health" | "pregnancy-follow-up" | "rainy-season",
   ) {
     if (completing.current || finishing.current) return;
     await recorderRef.current.stop();
     reconciliation.cancel();
+    const priorSurvey = surveys
+      .filter((item) => item.householdId === home.id)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    const repeatSource = surveys.find((item) => item.id === repeatOf);
+    const selectedTemplate =
+      templateId ??
+      (repeatSource?.templateId === "pregnancy-follow-up"
+        ? "pregnancy-follow-up"
+        : repeatSource?.templateId === "rainy-season"
+          ? "rainy-season"
+          : "family-health");
     const next = existing
       ? migrateDraftSurvey(existing)
-      : createSurvey({
-          householdId: home.id,
-          workspaceGeneration: generation,
-          ...(repeatOf ? { repeatOf } : {}),
-          templateId:
-            templateId ??
-            (surveys.find((item) => item.id === repeatOf)?.templateId ===
-            "pregnancy-follow-up"
-              ? "pregnancy-follow-up"
-              : "family-health"),
-        });
+      : selectedTemplate === "rainy-season"
+        ? createRainySurveyFromPrior({
+            householdId: home.id,
+            priorSurvey: repeatSource ?? priorSurvey,
+            workspaceGeneration: generation,
+          })
+        : createSurvey({
+            householdId: home.id,
+            workspaceGeneration: generation,
+            ...(repeatOf ? { repeatOf } : {}),
+            templateId: selectedTemplate,
+          });
     update(next);
     setHouseholdId(home.id);
     setMemberId(next.members[0]?.id ?? "");
     setHealthMemberId(null);
     setRevealedFieldKey(null);
-    setStep(next.status === "completed" ? "review" : "household");
+    setStep(
+      next.status === "completed"
+        ? "review"
+        : next.templateId === "rainy-season" &&
+            next.members.some((member) => member.values.name)
+          ? "health"
+          : "household",
+    );
     setReviewed(false);
     setSeconds(0);
     setTab("households");
@@ -901,7 +985,7 @@ function DaraWorkspace({
     setBusy(true);
     try {
       await recorder.stop();
-      const checked = await reconciliation.ensureReviewed();
+      await reconciliation.ensureReviewed();
       const latest = currentRef.current;
       if (
         !latest ||
@@ -914,12 +998,6 @@ function DaraWorkspace({
         setReviewed(false);
         setNotice(
           "The conversation check updated this visit. Review the changes before finishing.",
-        );
-        return;
-      }
-      if (!checked && !manualCheckAcknowledged) {
-        setNotice(
-          "The conversation check could not finish. Retry it or confirm that you checked the conversation manually.",
         );
         return;
       }
@@ -1049,7 +1127,12 @@ function DaraWorkspace({
             ? "notes"
             : "family",
       );
-    } else setStep(definition?.section === "notes" ? "notes" : "household");
+    } else {
+      if (definition && new Set<string>(RAINY_FIELD_IDS).has(definition.id)) {
+        setStep("health");
+        setHealthMemberId(null);
+      } else setStep(definition?.section === "notes" ? "notes" : "household");
+    }
     setReviewed(false);
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
@@ -1060,6 +1143,36 @@ function DaraWorkspace({
           ?.focus();
       }),
     );
+  }
+  function reviewReport(group: ReviewReport) {
+    update((current) => {
+      let next = current;
+      for (const id of group.uncertaintyIds)
+        next = resolveSurveyUncertainty(next, id);
+      for (const id of group.noteIds) next = reviewSurveyNote(next, id);
+      return next;
+    });
+  }
+  function editReport(group: ReviewReport) {
+    const field = survey?.fields.find((definition) =>
+      group.messages.some(
+        (text) =>
+          text.toLowerCase().includes(definition.label.toLowerCase()) ||
+          text.toLowerCase().includes(definition.id.toLowerCase()),
+      ),
+    );
+    if (!group.memberId && field?.scope === "member") {
+      setAssignReport(group);
+      return;
+    }
+    editIssue({
+      id: group.id,
+      memberId: field?.scope === "household" ? null : group.memberId,
+      fieldId:
+        field?.id ?? (group.memberId ? "healthHistory" : "householdNotes"),
+      kind: "uncertain",
+      message: "",
+    });
   }
   function renderField(field: SurveyFieldDefinition, member: string | null) {
     if (!survey) return null;
@@ -1100,6 +1213,40 @@ function DaraWorkspace({
         }
         onBlur={() =>
           protectedFields.current.delete(`${member ?? "household"}.${field.id}`)
+        }
+      />
+    );
+  }
+  function renderChecklist(
+    ids: readonly string[],
+    member: string | null,
+    title: string,
+  ) {
+    if (!survey) return null;
+    const record = member
+      ? survey.members.find((item) => item.id === member)
+      : survey.household;
+    if (!record) return null;
+    const fields = survey.fields.filter(
+      (field) =>
+        ids.includes(field.id) &&
+        (isSurveyFieldVisible(field, record) ||
+          revealedFieldKey === `${member ?? "household"}.${field.id}`),
+    );
+    if (!fields.length) return null;
+    return (
+      <CareChecklist
+        title={title}
+        fields={fields}
+        record={record}
+        memberId={member}
+        disabled={survey.status === "completed" || busy}
+        onChange={(field, value) => edit(member, field, value)}
+        onFocus={(field) =>
+          protectedFields.current.add(`${member ?? "household"}.${field}`)
+        }
+        onBlur={(field) =>
+          protectedFields.current.delete(`${member ?? "household"}.${field}`)
         }
       />
     );
@@ -1480,9 +1627,11 @@ function DaraWorkspace({
                           <h3>
                             {s.templateId === "pregnancy-follow-up"
                               ? t("Pregnancy survey")
-                              : s.repeatOf
-                                ? t("Repeat household visit")
-                                : t("Household visit")}
+                              : s.templateId === "rainy-season"
+                                ? t("Rainy-season visit")
+                                : s.repeatOf
+                                  ? t("Repeat household visit")
+                                  : t("Household visit")}
                           </h3>
                           <p>
                             {s.members.length
@@ -1556,6 +1705,20 @@ function DaraWorkspace({
                   >
                     {t("Start pregnancy survey")}
                   </Button>
+                  <Button
+                    kind="secondary"
+                    className="full-width"
+                    onClick={() =>
+                      openSurvey(
+                        household,
+                        undefined,
+                        undefined,
+                        "rainy-season",
+                      )
+                    }
+                  >
+                    {t("Start rainy-season visit")}
+                  </Button>
                   {selectedSurveys.some((s) => s.status === "completed") && (
                     <Button
                       kind="secondary"
@@ -1620,7 +1783,9 @@ function DaraWorkspace({
                       ? t("Visit record")
                       : survey.templateId === "pregnancy-follow-up"
                         ? t("Pregnancy survey")
-                        : t("Family health survey")}
+                        : survey.templateId === "rainy-season"
+                          ? t("Rainy-season visit")
+                          : t("Family health survey")}
                   </h1>
                 </div>
                 <button
@@ -1650,7 +1815,9 @@ function DaraWorkspace({
                   </button>
                 ))}
               </nav>
-              <div className="survey-layout">
+              <div
+                className={`survey-layout ${step === "health" && activeMember ? "has-health-detail" : ""}`}
+              >
                 <section className="survey-content">
                   {step === "household" && (
                     <>
@@ -1667,7 +1834,8 @@ function DaraWorkspace({
                           .filter(
                             (f) =>
                               f.scope === "household" &&
-                              f.section === "household",
+                              f.section === "household" &&
+                              !new Set<string>(RAINY_FIELD_IDS).has(f.id),
                           )
                           .map((f) => renderField(f, null))}
                       </div>
@@ -1827,42 +1995,114 @@ function DaraWorkspace({
                                 <ArrowLeft size={18} />
                                 {t("Back to health overview")}
                               </button>
-                              <section
-                                className="health-card"
-                                aria-labelledby={`health-title-${activeMember.id}`}
-                              >
-                                <div className="health-card-title">
-                                  <span className="round-symbol">
-                                    <UserMark />
-                                  </span>
-                                  <div>
-                                    <h3 id={`health-title-${activeMember.id}`}>
-                                      {memberName(
-                                        activeMember,
-                                        survey.members.indexOf(activeMember),
-                                        language,
+                              <div className="selected-health-layout">
+                                <section
+                                  className="health-card"
+                                  aria-labelledby={`health-title-${activeMember.id}`}
+                                >
+                                  <div className="health-card-title">
+                                    <span className="round-symbol">
+                                      <UserMark />
+                                    </span>
+                                    <div>
+                                      <h3
+                                        id={`health-title-${activeMember.id}`}
+                                      >
+                                        {memberName(
+                                          activeMember,
+                                          survey.members.indexOf(activeMember),
+                                          language,
+                                        )}
+                                      </h3>
+                                      <p>
+                                        {healthStatusLabel(
+                                          activeMember,
+                                          language,
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="survey-fields">
+                                    {survey.fields
+                                      .filter(
+                                        (f) =>
+                                          (f.scope === "member" &&
+                                            f.section === "health" &&
+                                            !new Set<string>([
+                                              ...PREGNANCY_FIELD_IDS,
+                                              ...PREGNANCY_CHECKLIST_IDS,
+                                            ]).has(f.id)) ||
+                                          f.id === "pregnancyStatus",
+                                      )
+                                      .map((f) =>
+                                        renderField(f, activeMember.id),
                                       )}
-                                    </h3>
+                                  </div>
+                                </section>
+                                {showPregnancyCare ? (
+                                  <section
+                                    className="pregnancy-care-panel"
+                                    aria-labelledby={`pregnancy-title-${activeMember.id}`}
+                                  >
+                                    <div className="care-panel-heading">
+                                      <h3
+                                        id={`pregnancy-title-${activeMember.id}`}
+                                      >
+                                        {t("Pregnancy and postnatal care")}
+                                      </h3>
+                                      <p>
+                                        {t(
+                                          "Record the care discussed with this person.",
+                                        )}
+                                      </p>
+                                    </div>
+                                    <div className="survey-fields">
+                                      {survey.fields
+                                        .filter(
+                                          (field) =>
+                                            new Set<string>(
+                                              PREGNANCY_FIELD_IDS,
+                                            ).has(field.id) &&
+                                            field.id !== "pregnancyStatus" &&
+                                            !new Set<string>(
+                                              PREGNANCY_CHECKLIST_IDS,
+                                            ).has(field.id),
+                                        )
+                                        .map((field) =>
+                                          renderField(field, activeMember.id),
+                                        )}
+                                    </div>
+                                    {renderChecklist(
+                                      PREGNANCY_CHECKLIST_IDS,
+                                      activeMember.id,
+                                      "Counselling checklist",
+                                    )}
+                                  </section>
+                                ) : (
+                                  <aside className="health-detail-guidance">
+                                    <h3>{t("Health details")}</h3>
                                     <p>
-                                      {healthStatusLabel(
-                                        activeMember,
-                                        language,
+                                      {t(
+                                        "Record only what was discussed. Pregnancy and postnatal care appears here when relevant.",
                                       )}
                                     </p>
-                                  </div>
-                                </div>
-                                <div className="survey-fields">
-                                  {survey.fields
-                                    .filter(
-                                      (f) =>
-                                        f.scope === "member" &&
-                                        f.section === "health",
-                                    )
-                                    .map((f) =>
-                                      renderField(f, activeMember.id),
+                                    {survey.status === "draft" && (
+                                      <Button
+                                        kind="secondary"
+                                        onClick={() =>
+                                          edit(
+                                            activeMember.id,
+                                            "maternalStage",
+                                            "postnatal",
+                                          )
+                                        }
+                                      >
+                                        {t("Record postnatal care")}
+                                      </Button>
                                     )}
-                                </div>
-                              </section>
+                                  </aside>
+                                )}
+                              </div>
                             </>
                           ) : (
                             <div className="health-overview">
@@ -1887,13 +2127,25 @@ function DaraWorkspace({
                                         {String(member.values.healthHistory)}
                                       </small>
                                     )}
-                                    {member.values.pregnancyStatus ===
-                                      "yes" && (
+                                    {(member.values.pregnancyStatus === "yes" ||
+                                      member.values.maternalStage ===
+                                        "pregnant" ||
+                                      member.values.maternalStage ===
+                                        "postnatal") && (
                                       <small>
-                                        {t("Pregnancy")}
-                                        {member.values.pregnancyWeeks
-                                          ? ` · ${t("{count} weeks", { count: String(member.values.pregnancyWeeks) })}`
-                                          : ""}
+                                        {member.values.maternalStage ===
+                                        "postnatal"
+                                          ? t("After delivery")
+                                          : t("Pregnancy")}
+                                        {member.values.maternalStage !==
+                                          "postnatal" &&
+                                        member.values.pregnancyMonths
+                                          ? ` · ${t("{count} months", { count: String(member.values.pregnancyMonths) })}`
+                                          : member.values.maternalStage !==
+                                                "postnatal" &&
+                                              member.values.pregnancyWeeks
+                                            ? ` · ${t("{count} weeks", { count: String(member.values.pregnancyWeeks) })}`
+                                            : ""}
                                       </small>
                                     )}
                                   </span>
@@ -1928,6 +2180,41 @@ function DaraWorkspace({
                             )}
                           </Empty>
                         </div>
+                      )}
+                      {survey.templateId === "rainy-season" && (
+                        <section
+                          className="rainy-care-panel"
+                          aria-labelledby="rainy-care-title"
+                        >
+                          <div className="care-panel-heading">
+                            <h3 id="rainy-care-title">
+                              {t("Rainy-season visit")}
+                            </h3>
+                            <p>
+                              {t(
+                                "Check the household surroundings and record the guidance discussed.",
+                              )}
+                            </p>
+                          </div>
+                          <div className="survey-fields">
+                            {survey.fields
+                              .filter(
+                                (field) =>
+                                  new Set<string>(RAINY_FIELD_IDS).has(
+                                    field.id,
+                                  ) &&
+                                  !new Set<string>(RAINY_CHECKLIST_IDS).has(
+                                    field.id,
+                                  ),
+                              )
+                              .map((field) => renderField(field, null))}
+                          </div>
+                          {renderChecklist(
+                            RAINY_CHECKLIST_IDS,
+                            null,
+                            "Visit checklist",
+                          )}
+                        </section>
                       )}
                     </>
                   )}
@@ -1977,86 +2264,30 @@ function DaraWorkspace({
                         </p>
                       </div>
                       {survey.status === "draft" &&
-                        survey.transcripts.length > 0 && (
-                          <div
-                            className={`conversation-check ${checkUnavailable && !reconciliation.isCurrent ? "check-unavailable" : ""}`}
-                            role="status"
-                          >
-                            <ClipboardCheck size={21} />
-                            <div>
-                              <strong>
-                                {reconciliation.status === "checking"
-                                  ? t("Checking the full conversation…")
-                                  : reconciliation.isCurrent
-                                    ? t("Conversation checked")
-                                    : checkUnavailable
-                                      ? t("Conversation not checked")
-                                      : t("Conversation check pending")}
-                              </strong>
-                              <p>
-                                {reconciliation.isCurrent
-                                  ? t(
-                                      "Review the answers and approve any suggested corrections below.",
-                                    )
-                                  : reconciliation.status === "checking"
-                                    ? t(
-                                        "Missing answers will appear after this check finishes.",
-                                      )
-                                    : offline
-                                      ? t(
-                                          "You’re offline. You can review the saved conversation manually.",
-                                        )
-                                      : (reconciliation.error
-                                          ? message(reconciliation.error)
-                                          : "") ||
-                                        t(
-                                          "Check the full conversation before reviewing missing answers.",
-                                        )}
-                              </p>
-                              {reconciliation.status === "checking" &&
-                                reconciliation.progress.total > 1 && (
-                                  <small>
-                                    {t("{count} of {total} sections checked", {
-                                      count: reconciliation.progress.checked,
-                                      total: reconciliation.progress.total,
-                                    })}
-                                  </small>
+                        issues.some((issue) => issue.kind === "missing") && (
+                          <div className="review-check-hint" role="status">
+                            {reconciliation.status === "checking" ? (
+                              <span>
+                                {t(
+                                  "Checking the conversation for these answers…",
                                 )}
-                              {checkUnavailable &&
-                                !reconciliation.isCurrent && (
-                                  <label className="manual-check-label">
-                                    <input
-                                      type="checkbox"
-                                      checked={manualCheckAcknowledged}
-                                      disabled={busy}
-                                      onChange={(event) =>
-                                        setManualCheckAcknowledged(
-                                          event.target.checked,
-                                        )
-                                      }
-                                    />
-                                    <span>
-                                      {t(
-                                        "I checked the conversation and answers manually.",
-                                      )}
-                                    </span>
-                                  </label>
-                                )}
-                            </div>
-                            {!reconciliation.isCurrent && (
-                              <Button
-                                kind="secondary"
-                                disabled={
-                                  offline ||
-                                  reconciliation.status === "checking"
-                                }
-                                onClick={() => void reconciliation.retry()}
-                              >
-                                {reconciliation.status === "checking"
-                                  ? t("Checking…")
-                                  : t("Retry check")}
-                              </Button>
-                            )}
+                              </span>
+                            ) : checkUnavailable &&
+                              !reconciliation.isCurrent ? (
+                              <>
+                                <span>
+                                  {t(
+                                    "You can enter the missing answers manually.",
+                                  )}
+                                </span>
+                                <button
+                                  disabled={offline}
+                                  onClick={() => void reconciliation.retry()}
+                                >
+                                  {t("Retry check")}
+                                </button>
+                              </>
+                            ) : null}
                           </div>
                         )}
                       {survey.status === "draft" && (
@@ -2079,20 +2310,14 @@ function DaraWorkspace({
                                       : "{count} details need attention",
                                     { count: reviewIssues.length },
                                   )
-                                : !reconciliation.isCurrent && !checkUnavailable
-                                  ? t("Conversation check pending")
-                                  : t("Ready for your review")}
+                                : t("Ready for your review")}
                             </h3>
                             <p>
                               {reviewIssues.length
                                 ? t(
                                     "Complete the required answers or review the suggestions below.",
                                   )
-                                : !reconciliation.isCurrent && !checkUnavailable
-                                  ? t(
-                                      "Missing answers will appear after this check finishes.",
-                                    )
-                                  : t("The required answers are complete.")}
+                                : t("The required answers are complete.")}
                             </p>
                           </div>
                         </div>
@@ -2235,44 +2460,64 @@ function DaraWorkspace({
                             </div>
                           </div>
                         ))}
-                      {survey.uncertainties
-                        .filter((u) => !u.resolved)
-                        .map((u) => (
-                          <div className="uncertainty-card" key={u.id}>
-                            <span className="pill amber">
-                              {t("Needs a check")}
-                            </span>
-                            <h3>{message(u.message)}</h3>
-                            <blockquote>“{u.evidence}”</blockquote>
-                            <Button
-                              kind="secondary"
-                              onClick={() =>
-                                update((s) => resolveSurveyUncertainty(s, u.id))
-                              }
-                            >
-                              {t("I have checked this")}
-                            </Button>
-                          </div>
-                        ))}
-                      {survey.notes
-                        .filter((n) => !n.reviewed)
-                        .map((n) => (
-                          <div className="uncertainty-card" key={n.id}>
-                            <span className="pill purple">
-                              {t("Conversation note")}
-                            </span>
-                            <p>{n.text}</p>
-                            <blockquote>“{n.evidence}”</blockquote>
-                            <Button
-                              kind="secondary"
-                              onClick={() =>
-                                update((s) => reviewSurveyNote(s, n.id))
-                              }
-                            >
-                              {t("Mark reviewed")}
-                            </Button>
-                          </div>
-                        ))}
+                      {reviewReports.length > 0 && (
+                        <div className="review-report-list">
+                          {reviewReports.map((group) => (
+                            <section className="review-report" key={group.id}>
+                              <header>
+                                <h3>
+                                  {group.memberId
+                                    ? memberName(
+                                        survey.members.find(
+                                          (member) =>
+                                            member.id === group.memberId,
+                                        )!,
+                                        survey.members.findIndex(
+                                          (member) =>
+                                            member.id === group.memberId,
+                                        ),
+                                        language,
+                                      )
+                                    : t("Household")}
+                                </h3>
+                                <span>{t("Needs review")}</span>
+                              </header>
+                              <ul>
+                                {group.messages.map((text, index) => (
+                                  <li key={index}>
+                                    {group.controlledMessages.includes(text)
+                                      ? message(text)
+                                      : text}
+                                  </li>
+                                ))}
+                              </ul>
+                              <details className="report-source">
+                                <summary>{t("View source")}</summary>
+                                {group.evidence.map((quote, index) => (
+                                  <blockquote key={index}>“{quote}”</blockquote>
+                                ))}
+                              </details>
+                              <div className="report-actions">
+                                <button onClick={() => editReport(group)}>
+                                  {t("Edit details")}
+                                </button>
+                                {group.uncertaintyIds.length > 0 &&
+                                  group.evidence.length > 0 && (
+                                    <button
+                                      onClick={() => setAssignReport(group)}
+                                    >
+                                      {t("Assign report")}
+                                    </button>
+                                  )}
+                                <button onClick={() => reviewReport(group)}>
+                                  {t("Mark reviewed")}
+                                  <Check size={15} />
+                                </button>
+                              </div>
+                            </section>
+                          ))}
+                        </div>
+                      )}
                       <div className="review-record">
                         <h3>{t("Household details")}</h3>
                         <dl>
@@ -2381,10 +2626,6 @@ function DaraWorkspace({
                             disabled={
                               !reviewed ||
                               issues.length > 0 ||
-                              (!reconciliation.isCurrent &&
-                                !(
-                                  checkUnavailable && manualCheckAcknowledged
-                                )) ||
                               busy ||
                               recording ||
                               extracting
@@ -2661,9 +2902,11 @@ function DaraWorkspace({
                           <p>
                             {s.templateId === "pregnancy-follow-up"
                               ? t("Pregnancy survey")
-                              : s.repeatOf
-                                ? t("Repeat household visit")
-                                : t("Household visit")}
+                              : s.templateId === "rainy-season"
+                                ? t("Rainy-season visit")
+                                : s.repeatOf
+                                  ? t("Repeat household visit")
+                                  : t("Household visit")}
                             {h.code ? ` · ${h.code}` : ""}
                           </p>
                           <div className="visit-card-footer">
@@ -3086,6 +3329,46 @@ function DaraWorkspace({
           </div>
         </Sheet>
       )}
+      {assignReport && survey && (
+        <AssignReportSheet
+          group={assignReport}
+          members={survey.members}
+          onClose={() => setAssignReport(null)}
+          onAssign={(member, destination) => {
+            const current = currentRef.current;
+            if (!current) return;
+            const record = member
+              ? current.members.find((item) => item.id === member)
+              : current.household;
+            if (!record)
+              throw new Error(
+                "Select a family member before adding the report.",
+              );
+            const previous = String(record.values[destination] ?? "");
+            const report = assignReport.evidence
+              .filter((quote) => !previous.includes(quote))
+              .join("\n\n");
+            const combined = [previous, report].filter(Boolean).join("\n\n");
+            if (combined.length > 4000)
+              throw new Error(
+                "This report is too long for one answer. Edit the answer manually.",
+              );
+            let next = editSurveyField(current, member, destination, combined);
+            if (
+              member &&
+              destination === "healthHistory" &&
+              !record.values.healthStatus
+            )
+              next = editSurveyField(next, member, "healthStatus", "concerns");
+            for (const id of assignReport.uncertaintyIds)
+              next = resolveSurveyUncertainty(next, id);
+            for (const id of assignReport.noteIds)
+              next = reviewSurveyNote(next, id);
+            update(next);
+            setAssignReport(null);
+          }}
+        />
+      )}
       {removeMember && (
         <Sheet
           title={t("Remove this family member?")}
@@ -3165,6 +3448,146 @@ function MemberPicker({
     </div>
   );
 }
+function CareChecklist({
+  title,
+  fields,
+  record,
+  memberId,
+  disabled,
+  onChange,
+  onFocus,
+  onBlur,
+}: {
+  title: string;
+  fields: SurveyFieldDefinition[];
+  record: SurveyAnswerRecord;
+  memberId: string | null;
+  disabled: boolean;
+  onChange: (field: string, value: SurveyValue) => void;
+  onFocus: (field: string) => void;
+  onBlur: (field: string) => void;
+}) {
+  const { t, fieldLabel } = useLanguage();
+  return (
+    <fieldset className="care-checklist">
+      <legend>{t(title)}</legend>
+      <p>{t("Tick each topic after discussing it.")}</p>
+      {fields.map((field) => {
+        const id = `answer-${memberId ?? "household"}-${field.id}`;
+        const meta = record.meta[field.id];
+        return (
+          <div className="care-checklist-item" key={field.id}>
+            <label htmlFor={id}>
+              <input
+                id={id}
+                type="checkbox"
+                checked={record.values[field.id] === "done"}
+                disabled={disabled}
+                onChange={(event) =>
+                  onChange(field.id, event.target.checked ? "done" : "pending")
+                }
+                onFocus={() => onFocus(field.id)}
+                onBlur={() => onBlur(field.id)}
+              />
+              <span>{fieldLabel(field)}</span>
+            </label>
+            <div className="checklist-meta">
+              <span>
+                {meta?.manuallyProtected
+                  ? t("Edited by you")
+                  : meta?.source === "extracted"
+                    ? t("From conversation")
+                    : ""}
+              </span>
+              {meta?.evidence && (
+                <details>
+                  <summary>{t("View source")}</summary>
+                  <blockquote>“{meta.evidence}”</blockquote>
+                </details>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </fieldset>
+  );
+}
+function AssignReportSheet({
+  group,
+  members,
+  onClose,
+  onAssign,
+}: {
+  group: ReviewReport;
+  members: SurveyMember[];
+  onClose: () => void;
+  onAssign: (
+    member: string | null,
+    destination: "householdNotes" | "healthHistory",
+  ) => void;
+}) {
+  const { t, language, message } = useLanguage();
+  const [target, setTarget] = useState(group.memberId ?? "");
+  const [error, setError] = useState("");
+  return (
+    <Sheet title={t("Assign report")} onClose={onClose}>
+      <form
+        className="sheet-content"
+        onSubmit={(event) => {
+          event.preventDefault();
+          try {
+            if (!target) return;
+            onAssign(
+              target === "household" ? null : target,
+              target === "household" ? "householdNotes" : "healthHistory",
+            );
+          } catch (reason) {
+            setError(
+              reason instanceof Error
+                ? reason.message
+                : "The report could not be added.",
+            );
+          }
+        }}
+      >
+        <p>
+          {t(
+            "Choose where this report belongs. The original words will be added to household notes or the person’s health history.",
+          )}
+        </p>
+        <div className="assignment-evidence">
+          {group.evidence.map((quote, index) => (
+            <blockquote key={index}>“{quote}”</blockquote>
+          ))}
+        </div>
+        <label className="form-label">
+          {t("Record under")}
+          <select
+            value={target}
+            required
+            onChange={(event) => setTarget(event.target.value)}
+          >
+            <option value="">{t("Choose a household or person")}</option>
+            <option value="household">{t("Household notes")}</option>
+            {members.map((member, index) => (
+              <option key={member.id} value={member.id}>
+                {memberName(member, index, language)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {error && (
+          <p role="alert" className="inline-error">
+            {message(error)}
+          </p>
+        )}
+        <Button type="submit" className="full-width" disabled={!target}>
+          {t("Add report")}
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
 function AnswerField({
   field,
   memberId,
@@ -3241,11 +3664,15 @@ function AnswerField({
       ) : (
         <input
           {...shared}
-          type={field.id === "phone" ? "tel" : "text"}
+          type={
+            field.id === "phone" || field.id === "householdPhone"
+              ? "tel"
+              : "text"
+          }
           inputMode={
             field.type === "number"
               ? "decimal"
-              : field.id === "phone"
+              : field.id === "phone" || field.id === "householdPhone"
                 ? "tel"
                 : "text"
           }

@@ -5,7 +5,7 @@ export function GET() {
     {
       status: "ok",
       application: "DARA",
-      version: "0.3.0",
+      version: "0.4.0",
       mode: "workspace",
       providers: {
         ...providerConfiguration(),
