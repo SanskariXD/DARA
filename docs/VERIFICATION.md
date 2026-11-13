@@ -1,4 +1,25 @@
-# DARA 0.3 verification
+# DARA 0.4 verification
+
+Checked 13 November 2026 with fictional records. Release identity and final CI result: [RELEASE.md](RELEASE.md).
+
+## Regressions resolved
+
+- Fresh named members and repeated introductions now retain health proposals through decode, application, save and reload.
+- Kannada spouse aliases and pronoun continuity are checked against the current person; a stale name anchor cannot bypass a newer speaker/person reference.
+- Household notes combine direct fields and note projections in one passage. Partial extracted narratives can recover additional quotes; manual, unknown-provenance and corrected answers stay protected.
+- Counselling accepts actual speaker-prefixed enquiries/advice and rejects patient facts, meta-questions, denials and future promises. Captured real synthetic Gemini output is replayed in independent integration tests.
+- A 100-field legacy draft migrates with all custom answers retained. Storage validates migration output before replacing a valid record.
+- Untouched examples upgrade; edited examples and completed real records are preserved. Reset retains its generation guards.
+- Background checks retry transient errors automatically, stop after bounded failures, resume on reconnect and no longer require a second acknowledgement to complete a valid reviewed record.
+- Browser verification caught a 55px focused-input shift caused by a success banner. The redundant banner was removed; the original strict focus/position test is retained.
+
+Mobile pregnancy, rainy-season and review screenshots were inspected at 390px. Text and controls remain readable without horizontal clipping. No screenshot artifacts are committed to the repository.
+
+The four current live probes test structured extraction and persistence. They do not establish noisy microphone recognition accuracy; full speech/device validation remains separate.
+
+---
+
+# Historical 0.3 verification
 
 Checked 13 November 2026. All test records and provider probes are fictional.
 

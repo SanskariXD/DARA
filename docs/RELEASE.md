@@ -1,44 +1,36 @@
-# DARA 0.3 release
+# DARA 0.4 release
 
 Released 13 November 2026.
 
-- Tested and deployed runtime: `249c91d5253bab7ebf2db11cca699be50a868a72`.
-- [Passing GitHub Actions run 43424538682](https://github.com/SanskariXD/DARA/actions/runs/43424538682).
-- Production deployment: `dpl_AVuDD9Vx9z1ENSTZdq5kJ1W77nVJ`.
-- Deployment URL: https://dara-8ntzoh0c1-sanskaris-projects.vercel.app/
-
 - App: https://dara-sigma.vercel.app/
 - Repository: https://github.com/SanskariXD/DARA
-- Vercel project: `dara` (`prj_jTIgFE5HlXN7bEAZQaKwoVOem81F`)
-- Deployment method: direct source upload, Node 24, Next.js 16.4.6.
+- Implementation commit: `bc25652869955d7f660f11e1f64b5797b26a9c97`.
+- Production deployment: `dpl_CSADQuVEQRm8PYa78Cwe4boqBGGh`, READY.
+- Deployment URL: https://dara-hetnlo5pi-sanskaris-projects.vercel.app/
+- Deployment method: Git integration from main, Next.js on Node 24.
+- CI: https://github.com/SanskariXD/DARA/actions/runs/43447296578
 
 ## Changes
 
-- Five clearly marked fictional households: two pregnancy surveys and three general household surveys. Existing records are retained.
-- Relationship dropdown with grandparents, aunts, uncles and male/female cousins; guarded, editable sex defaults.
-- Compact per-person health cards. “Not discussed” remains distinct from an explicit report of no concerns. Optional fever duration, temperature and breathing details expand for concerns or recorded facts. Numeric BP is replaced with reported hypertension; pregnancy details remain conditional.
-- One combined reported symptoms/history field for each person, weight in family details, and one household notes area. Old draft answers migrate without discarding evidence; completed history remains unchanged.
-- More conservative person attribution using precise field evidence, explicit correction handling, and better Kannada/Hindi health terminology instructions.
-- A background full-conversation check recovers missing answers without overwriting manual edits or newer corrections. Final review links to specific fields and requires another review if the final check changes an answer.
-- English, Kannada, Hindi, Telugu, Tamil and Malayalam interface dictionaries bundled locally. Speech uses automatic language detection independently of the interface choice.
-- Confirmed reset restores the five original examples and preserves preferences. Delayed responses and stale tabs cannot recreate removed records.
+- Fixed health extraction on fresh person introductions, repeated introduction backfill, Kannada spouse references and contextual pronouns. Person changes prevent stale references from assigning someone else’s answer.
+- Recovered household notes and missing portions of machine-generated history, while preserving manual answers, newer corrections and focused fields.
+- Removed the large conversation-check gate and extra manual-check acknowledgement. Checks retry automatically; missing answers get a small status hint. A final check that adds answers still requires the worker to review those additions.
+- Added one household contact number and moved weight to expanded health details. Existing stored values and completed records remain intact.
+- Added pregnancy and postnatal details: reported duration, MCP card, nutrition, supplements, injections, facility and care visits. Source-backed editable checklists distinguish delivered counselling from patient reports or future promises.
+- Added rainy-season visits with known family identities, fresh health questions, stagnant-water observations and a short guidance checklist.
+- Enriched the two pregnancy examples and changed one example to a four-person rainy-season visit. Only untouched canonical examples upgrade automatically; edited examples and user records are preserved.
+- Added translations for the new controls in all six interface languages and compact report assignment in Review.
 
 ## Verification
 
-See [VERIFICATION.md](VERIFICATION.md) for resolved review findings and [PROVIDERS.md](PROVIDERS.md) for real synthetic provider checks. CI covers TypeScript, unit/API/domain/storage/recorder/integration checks, production build and browser workflows. All **206 tests across 13 files**, TypeScript, the production build and **10 Chromium journeys** passed on the exact deployed runtime. Browser checks cover manual/custom visits and blank repeats, 360/390/768px layouts, offline recovery, automatic member creation and protected edits, microphone denial, health/review navigation, all six languages, delayed-response reset, background backfill and recovery during final completion.
+TypeScript, all **275 unit/API/domain/storage/integration tests**, the production build and **all 10 Chromium journeys** passed on implementation commit `bc25652869955d7f660f11e1f64b5797b26a9c97` in the linked CI run. The browser suite covers fresh English/Kannada capture and reload, protected focused/manual edits, household phone/health weight, pregnancy and rainy visits, six languages, offline/reset behavior and automatic retry/final review.
 
-The live Kannada probe assigned BP, overall no-concerns and breathing reports to three different intended members. A Hindi correction changed an extracted age from 60 to 62; a full-history probe recovered an earlier missing age without undoing that correction. These establish specific working cases, not field accuracy guarantees.
+Five real Gemini requests produced four successful synthetic scenarios; one upstream rejection succeeded on retry. All four captured responses were decoded, applied to the final domain engine and saved/reloaded through the repository. English health and household notes, Kannada spouse attribution, pregnancy details/direct counselling, and Kannada rainy-season observations/advice passed those checks. These are specific regression probes, not a field-accuracy guarantee. See [PROVIDERS.md](PROVIDERS.md).
 
-The final screenshot review verified localized fields and navigation, including wrapped Malayalam step labels. All reviewed names and records were fictional. Verification screenshots are not published in this repository.
+The public health endpoint reports 0.4.0. Hosted checks verified the homepage and client assets (HTTP 200), unauthenticated extraction rejection (401), workspace unlock/session/logout (200) and a Secure session cookie. Configured secrets are absent from published source and built client assets. Verification screenshots contain fictional records and are not committed to this repository.
 
-The hosted reconciliation endpoint rejected unauthenticated access, returned a valid response for an original synthetic passage and recovered the missing age while preserving a newer correction and an unstated age. Signed Secure session and logout checks passed. Actual configured secrets were absent from published source and built client assets.
+## Recording boundaries
 
-This release record follows the runtime in a documentation-only commit.
+A bare “temperature 103” is retained in history with a request to clarify its unit, never silently treated as Celsius. Unmentioned health is not marked healthy. A patient mentioning an injection or appointment does not by itself complete a counselling task.
 
-## Existing boundaries
-
-Records remain in the current browser/device's IndexedDB, with JSON export. There is no shared cloud database or individual worker account management. The shared private access code protects provider API use; it does not encrypt local records. Credentials stay server-only and out of Git.
-
-Native-speaking review of translated copy and noisy human speech on target phones remain field-validation work. The questionnaire is not represented as an approved government form or a clinical diagnosis system.
-
-The initial release used direct upload. Automatic Git deployments were subsequently verified at commit `62a4cc7` on 13 November 2026.
+Records remain in this browser/device’s IndexedDB, with export; this release does not add a shared cloud database or individual worker accounts. Native-speaker review, noisy field audio and target-phone validation remain outstanding. Care-field sources and scope are documented in [CARE-WORKFLOWS.md](CARE-WORKFLOWS.md).

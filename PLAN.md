@@ -148,7 +148,7 @@ User feedback: working voice workflow needs more reliable person-specific mappin
 
 Privacy and validation boundaries remain as documented in docs/INTEGRATIONS.md. This release changes recordkeeping behavior, not clinical diagnosis or official screening requirements. All fixture/provider verification uses invented records.
 
-## Current release checkpoint (0.3)
+## Previous release checkpoint (0.3)
 
 - Runtime: `249c91d5253bab7ebf2db11cca699be50a868a72`.
 - [CI run 43424538682](https://github.com/SanskariXD/DARA/actions/runs/43424538682): 206 tests, TypeScript, production build and 10 browser journeys passed.
@@ -168,7 +168,15 @@ Privacy and validation boundaries remain as documented in docs/INTEGRATIONS.md. 
 - [x] Add rainy-season visits with reusable family identities, fresh health/environment answers and prevention checklist.
 - [x] Upgrade untouched examples safely, including two pregnancy visits and a four-person rainy visit.
 - [x] Translate new controls in all six interface languages.
-- [ ] Verify real synthetic provider calls, regression tests, browser flows and responsive screenshots.
-- [ ] Publish source, confirm Git-triggered production deployment and check hosted behavior.
+- [x] Verify real synthetic provider calls, regression tests, browser flows and responsive screenshots.
+- [x] Publish source, confirm Git-triggered production deployment and check hosted behavior.
 
 Clinical field rationale and source links: [docs/CARE-WORKFLOWS.md](docs/CARE-WORKFLOWS.md).
+
+## Current release checkpoint (0.4)
+
+- Runtime: `bc25652869955d7f660f11e1f64b5797b26a9c97`.
+- [CI run 43447296578](https://github.com/SanskariXD/DARA/actions/runs/43447296578): 275 tests, TypeScript, production build and all 10 browser journeys passed.
+- Production deployment `dpl_CSADQuVEQRm8PYa78Cwe4boqBGGh` is READY at the unchanged public address, through Git integration.
+- Four live synthetic extraction scenarios passed current-engine application and repository save/reload; mobile screenshots and hosted authentication/assets were checked.
+- [Release record](docs/RELEASE.md) documents the final behavior and remaining field-validation boundaries.
