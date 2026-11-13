@@ -1,18 +1,19 @@
 import { noStore } from "@/lib/server/http";
+import { providerConfiguration } from "@/lib/server/providers";
 export function GET() {
   return Response.json(
     {
       status: "ok",
       application: "DARA",
-      version: "0.1.0",
-      mode: "demo",
+      version: "0.2.0",
+      mode: "workspace",
       providers: {
-        speech: "placeholder",
-        extraction: "placeholder",
-        authentication: "placeholder",
-        cloudStorage: "placeholder",
+        ...providerConfiguration(),
+        authentication: "workspace-access-code",
+        cloudStorage: "not-connected",
       },
       storage: "this-device",
+      configurationOnly: true,
     },
     { headers: noStore },
   );

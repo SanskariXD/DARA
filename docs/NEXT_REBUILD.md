@@ -1,12 +1,12 @@
 # Next rebuild: template-driven family health survey
 
-This is a planned feature for the next DARA rebuild. It is not in the current production release, where recording and live AI integrations remain placeholders.
+This specification is implemented in DARA 0.2 alongside live speech/extraction and the reference-led interface redesign.
 
 ## Worker flow
 
 1. The worker selects a household and chooses **Start a fresh survey** or **Repeat survey**. The new survey uses a blank answer set. It must not prefill health answers from an earlier survey. Keep only the household context needed to identify the family and select the survey.
 2. DARA opens the selected version of the Family Health Survey template. The worker can add a field manually when the conversation covers information outside the default questions. The worker chooses whether it belongs to the household or each member, gives it a label and supported input type, and can make it optional or required.
-3. The worker asks how many people are in the family. When the count is understood, show the proposed count and let the worker confirm or correct it. On confirmation, create that many empty member sections using the template’s repeatable person fields.
+3. The worker asks how many people are in the family. When the count is explicitly stated, automatically create that many empty member sections using the template’s repeatable person fields. Show the count as editable; ambiguous counts and corrections that would discard answered sections require review.
 4. As the conversation continues, the speech transcript and extraction model propose values for the matching member and template field. For example, a person’s name, their relationship to the household, and their age should populate the same member section when the conversation supports that mapping.
 5. Keep additional relevant information in the survey’s notes when it does not fit a template field. Include the supporting transcript passage and member attribution when clear. If the speaker or meaning is uncertain, mark it for review rather than guessing.
 6. Before saving as complete, the worker reviews the family count, member identities, missing required fields, uncertain matches, conflicts, and notes. Completed surveys are read-only; a requested repeat creates a new survey linked to the same household.
@@ -29,11 +29,11 @@ The household count controls the number of member sections, but should not silen
 
 ## Build and verification checklist
 
-- [ ] Approve the Family Health Survey questionnaire, required fields and conditional questions.
-- [ ] Add versioned template types and a repeatable member group to the shared contract and persistence schema.
-- [ ] Add safe count confirmation, dynamic member creation, manual optional fields, and review interactions.
-- [ ] Include survey-scoped custom field IDs in extraction and review contracts without allowing a model to create arbitrary fields.
-- [ ] Extend extraction contracts to accept only known template field IDs and members in the active survey.
-- [ ] Test fresh and repeated blank surveys, count changes, exact member attribution, uncertain attribution, notes with evidence, conflicts, reload recovery and completed-survey immutability.
+- [ ] Obtain clinical/program approval for an official ASHA questionnaire. The current template captures reported household information and is not labelled an approved government form.
+- [x] Add versioned template types and a repeatable member group to the shared contract and persistence schema.
+- [x] Add safe count handling, dynamic member creation, manual optional fields, and review interactions.
+- [x] Include survey-scoped custom field IDs in extraction and review contracts without allowing a model to create arbitrary fields.
+- [x] Extend extraction contracts to accept only known template field IDs and members in the active survey.
+- [x] Test fresh and repeated blank surveys, count changes, exact member attribution, uncertain attribution, notes with evidence, conflicts, reload recovery and completed-survey immutability.
 - [ ] Verify keyboard, screen-reader labels, 360px phones, tablet and desktop layouts before production deployment.
 

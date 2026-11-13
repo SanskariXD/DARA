@@ -1,48 +1,56 @@
-# Integrations and activation
+# Integrations in DARA 0.2
 
-This deployment is an intentionally credential-free **synthetic demo**, as requested. No microphone audio, patient records or transcript text is sent to Gnani, Gemini, Supabase or any other third party. Browser drafts use this origin's IndexedDB. A public demo session is **not authentication**. Do not use genuine household or medical information in it.
+DARA connects browser recording to Gnani speech recognition and sends transcript passages with relevant survey context to Google Gemini for suggested answers. A deterministic engine checks and applies those suggestions. Households, survey drafts, transcripts and completed records are stored in IndexedDB on the current device. There is no cloud record database, automatic backup or cross-device synchronization.
 
-## What runs now
+Detailed provider protocols, limits and observed synthetic test results are in [PROVIDERS.md](./PROVIDERS.md).
 
-- Next.js Node route handlers deployed with the frontend.
-- `GET /api/health`: version and explicit capability status, no credentials.
-- `POST /api/demo/extract`: whitelisted sample fixture → structured patch. It accepts only synthetic household/segment identifiers and revision metadata. User-provided transcript/patch values are rejected.
-- Zod and deterministic engine validation, member matching, evidence checks, field ordering and manual edit protection.
-- Browser local drafts and completion history, with review before completion.
-- PWA app shell and offline manual entry. API responses and user records are never cached by the service worker.
+## Available routes
 
-## Placeholders
+| Route                         | Behavior                                                                                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`             | Reports version and configuration presence; `configurationOnly: true` distinguishes this from a live provider check. No paid request is made. |
+| `GET /api/auth/session`       | Reports whether the browser has a valid workspace session.                                                                                    |
+| `POST /api/auth/session`      | Checks the private workspace access code and sets a signed session cookie.                                                                    |
+| `DELETE /api/auth/session`    | Clears the browser's session cookie. It does not erase local records.                                                                         |
+| `POST /api/speech/transcribe` | Requires a valid session, validates bounded PCM WAV audio, sends it to Gnani, and returns transcript text and language.                       |
+| `POST /api/extract`           | Requires a valid session, validates a bounded survey snapshot and source passage, calls Gemini, and returns a validated extraction envelope.  |
 
-`POST /api/extract`, `/api/speech/session`, `/api/speech/tts`, `/api/auth/session`, `/api/sync` return HTTP 503 with `INTEGRATION_NOT_CONFIGURED`. They do not create fake credentials, store records in ephemeral server memory, or fall back to a paid provider. The boundary deliberately remains closed even if a key appears in the environment. Adding a key alone is not sufficient to enable an authenticated production workflow.
+Provider failures return actionable errors without revealing upstream bodies or keys. Existing answers remain intact. There is no sample-data substitution for failed live requests. The application exposes no speech playback, WebSocket relay or cloud synchronization endpoint.
 
-Copy `.env.example` to `.env.local` for local development. In Vercel, set values in Project Settings → Environment Variables. Never use `NEXT_PUBLIC_` for provider keys or service-role credentials. `.env.local`, `.env`, and `.vercel` are excluded from Git. Blank names in `.env.example` are the only committed environment template.
+## Access and keys
 
-| Environment name | Purpose |
-| --- | --- |
-| `DARA_MODE` | `demo` for this release. No live mode is implemented. |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | Future server-side structured extraction adapter |
-| `GNANI_API_KEY`, `GNANI_STT_WS_URL` | Future server-side audio relay/session |
-| `GNANI_TTS_API_URL`, `GNANI_TTS_VOICE` | Future reviewed audio notices |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Future authentication and household-scoped database adapter; not provisioned |
-| `DARA_CLINICAL_POLICY_VERSION` | Future clinician-reviewed alert policy version |
+The workspace uses a shared private access code. It does not provide individual staff accounts, household assignments, roles or server-side record authorization. The signed cookie expires after eight hours and is HttpOnly, SameSite Strict, and Secure over HTTPS. Paid routes check the session and request origin before processing uploads. Login attempts and paid requests have per-instance rate limits; these are not a distributed spending quota.
 
-## Future live data path
+The code gate protects the provider routes. It does not encrypt IndexedDB, create separate local records for each worker, or protect saved records from another person using the same unlocked browser profile. Logging out removes the session cookie but leaves records on the device. Rotate the signing secret to invalidate all outstanding signed sessions.
 
-1. Authenticate worker; authorize household and visit on the server. Establish durable visit revision/idempotency storage. Add request quotas and abuse controls before enabling paid providers.
-2. Browser microphone permission is requested only on an explicit listening action. Send 16 kHz mono PCM only after verifying the current Gnani SDK contract. Keep keys on the server; never return them to the browser.
-3. A WebSocket relay uses bounded audio queues, connection/session IDs and exponential reconnect. Preserve transcript sequence across reconnect and flush/stop on visit end. Verify final/interim, segment ID and timestamp behavior against an actual Gnani trace. Do not infer a speaker switch from a newline.
-4. Feed finalized segments to a bounded extraction queue. The code's `buildExtractionContext` demonstrates the prompt/field/context contract, not a verified Gemini configuration. Select and benchmark an actually available model in the user's project rather than hard-coding a past recommendation.
-5. Gemini returns the Zod patch shape. Parse strictly, validate evidence and member attribution, and apply to the server's authorized current visit. Client-supplied state or member IDs are not authorization. The current fixture engine uses an explicit attributed member per segment; multi-person live segments need a reviewed attribution/uncertainty contract before activation.
-6. Send accepted field patches to the browser. Keep rendering and capture independent. Preserve active editing and defer competing proposals to review. Never reset the full form for a new segment.
-7. Save remotely with optimistic revision checks and household access policies; reconcile local drafts explicitly. Completed visit revisions remain immutable.
-8. Only reviewed, versioned clinical rules can trigger an audible alert. Preserve the family's exact report. Deduplicate alerts; suppress the app's own speech from extraction. The demo's persistent fever/difficulty observations are review prompts, not validated clinical triage.
+| Environment variable  | Purpose                                                  |
+| --------------------- | -------------------------------------------------------- |
+| `GNANI_API_KEY`       | Server credential for Gnani speech recognition           |
+| `GEMINI_API_KEY`      | Server credential for Gemini extraction                  |
+| `GEMINI_MODEL`        | Verified model: `gemini-3.5-flash-lite`                  |
+| `DARA_ACCESS_CODE`    | Shared private workspace code                            |
+| `DARA_SESSION_SECRET` | Independent random secret for signing workspace sessions |
 
-## Deployment considerations
+Copy the committed `.env.example` template to `.env.local` for development. Set deployed values through Vercel Environment Variables. Local environment files are ignored by Git. Never commit real values or give provider keys a `NEXT_PUBLIC_` prefix. The browser receives neither provider keys nor the session signing secret.
 
-Vercel's current docs describe WebSockets via `upgradeWebSocket` in `@vercel/functions` 3.10.0+ with `ws`, including Next.js support. Live sessions still require reconnection when a function reaches its duration limit. The present release has no WebSocket relay because speech APIs are intentionally placeholders. Verify the account's actual function duration and region during live activation.
+## Data flow and permission
 
-Sources checked 13 November 2026: [WebSockets](https://vercel.com/docs/functions/websockets), [Vercel Functions API](https://vercel.com/docs/functions/functions-api-reference/vercel-functions-package), [function duration](https://vercel.com/docs/functions/configuring-functions/duration). Use the installed Next.js version's docs in `node_modules/next/dist/docs` when changing route handlers.
+1. Before recording, the interface explains that audio and conversation text go to connected services. The worker confirms that the family agreed, then the browser requests microphone permission. This confirmation is kept for the current survey in memory; it is not a durable consent register.
+2. The AudioWorklet captures microphone audio. The recorder creates complete mono 16 kHz PCM WAV clips. Separate ordered stages send audio to speech recognition and process returned transcript text; bounded queues can pause capture when earlier work falls behind. Pending audio is memory-only and can be lost if the page closes.
+3. The server forwards each accepted clip and selected language to Gnani. Transcription supports English, Kannada and Hindi. This implementation uses segmented REST requests rather than continuous WebSocket transcription.
+4. Transcript passages are added to the local survey. The extraction request includes the current template, current household/member answers and their ownership metadata, the source passage, and up to six earlier passages. Gemini sees this bounded context to identify fields and people. Pasting conversation text and requesting extraction also sends text and context to Gemini.
+5. The server checks structured output, allowed fields, member references and exact evidence. The client engine applies it to the latest survey, protects manual edits, and keeps conflicting or uncertain proposals for review. Completed surveys remain read-only; subsequent work uses a new survey.
 
-## Required validation before real data
+Explain both third-party processing and device-local storage before collecting household information. Browser microphone permission is not permission to disclose a family's information to providers. The recording checkbox records the worker's acknowledgement only; it does not establish a complete consent or organizational data-handling policy. Provider retention, processing terms, account settings and any required agreements must be reviewed by the workspace owner. DARA does not control or claim to delete provider-side data.
 
-Live provider consent/data handling, real authentication/access checks, household assignment isolation, encrypted transport/storage policy, clinical protocol review, device data removal and shared-device behavior, real network interruptions, Kannada/Hindi/English extraction accuracy, low-end device recording, and measured end-of-speech p50/p95. No current demo result is a medical accuracy or live speech latency claim.
+## Local records and offline behavior
+
+IndexedDB stores households, drafts, completed surveys, transcripts, review information, audit entries and settings. Writes use transactions and revision checks to detect stale updates from another tab. Storage errors are surfaced instead of silently replacing unreadable data. No application-level encryption is implemented for these records or exported JSON files.
+
+The service worker caches the application shell, not API responses or records. After the shell has loaded successfully, manual editing of locally available records can continue offline. Gnani and Gemini require a network connection. Transcript passages already saved in a draft remain available for review; raw audio is not durably saved for later upload.
+
+Exports are downloaded copies of local data, not an automatic cloud backup. Keep exported files according to the same access and retention policy as the records themselves. Clearing browser site data, deleting a browser profile or losing the device can remove the only saved copy. Deleting a household removes its local surveys; it does not remove previous downloads or copies held by external services.
+
+## Verification boundary
+
+Live credentials and the speech-to-form path were exercised using invented people and synthetic audio. API, engine and storage tests cover validation, evidence, manual edit protection, access checks and local persistence behavior. These checks do not establish medical accuracy, noisy-field recognition quality, multilingual field performance, a sustained throughput target or suitability for shared-device patient deployments. Review every completed survey. Individual identity, household access policies, encrypted record storage and remote backup remain separate future capabilities.

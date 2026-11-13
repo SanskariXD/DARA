@@ -24,6 +24,9 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Verify production browser workflows
         run: npm run test:e2e
+        env:
+          DARA_ACCESS_CODE: dara-browser-test-only-2026
+          DARA_SESSION_SECRET: dara-browser-test-session-secret-not-for-production-2026
       - name: Preserve browser verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

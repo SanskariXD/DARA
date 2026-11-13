@@ -2,36 +2,40 @@
 
 **Digital Assisted Recordkeeping for ASHA Workers**
 
-A mobile-first household register with a quiet interface, recoverable local drafts, evidence-backed field updates and explicit review. Built for Anjan Shetty's ASHA workflow.
+[Open DARA](https://dara-sigma.vercel.app/) · [Build checks](https://github.com/SanskariXD/DARA/actions)
 
-> This release is a synthetic demo. Live Gnani, Gemini, authentication, database sync and clinical audio services are placeholders by request. It does not process microphone audio or call an AI provider. Do not enter real patient information.
+DARA is an installable household register with fresh family-health surveys, editable template fields, voice transcription, and evidence-backed form updates. The introduction uses an airy blue layout; the workspace uses lavender surfaces, rounded forms, clear survey steps and bottom sheets.
 
-## Use the app
+## Use the workspace
 
-**[Open DARA](https://dara-sigma.vercel.app/)** · [Verification workflow](https://github.com/SanskariXD/DARA/actions)
+1. Open the workspace using the private access code supplied by its owner.
+2. Add a household, then start a fresh Family Health Survey. The answers begin blank.
+3. Enter the family size, or record the conversation. A stated count creates that many blank member sections automatically. Add a member or a custom household/member field manually when necessary.
+4. DARA sends short WAV speech segments to Gnani, then finalized text to Gemini for structured field proposals. Names, ages, relationships and other answers go to the corresponding member when supported by the conversation. Relevant additional details can be retained in notes.
+5. Manual edits stay protected. Review uncertain attribution, competing suggestions and required answers before completing the visit.
+6. A repeat survey starts blank and preserves the earlier completed record. Export a backup from Settings.
 
-1. Open the demo workspace and select a household.
-2. Start a visit. Existing member details are already available.
-3. Edit any field, or choose **Try sample conversation** to replay predefined transcript events through the HTTP extraction boundary.
-4. Watch only the affected fields change. Your manual edits are retained; competing suggestions go to review.
-5. Review missing answers, conflicts and reported observations, then finish the visit.
-6. Find the saved record under Visits. Drafts survive reload on the same browser/device. Export a JSON backup from Settings.
+The **Conversation** sheet shows the original text. Text can also be entered manually and submitted to the same extraction path, or retried after a connection failure.
 
-The sample demonstrates a corrected weight, member-specific fever report, pregnancy information and exact transcript evidence. It is a fixture replay, not a simulation presented as live transcription or AI. New households support manual visits; sample extraction is restricted to seeded households.
+## What is connected
 
-Screenshots: [mobile directory](docs/mobile-preview.png) · [tablet visit](docs/tablet-visit.png) · [desktop workspace](docs/preview.jpg).
+- Gnani Vach REST STT, Prisma v3.0: 16 kHz mono PCM WAV, with English/Kannada/Hindi language selection.
+- Gemini structured extraction with a validated schema, field allowlists and verbatim transcript evidence.
+- Private workspace access through a signed HttpOnly cookie. Provider credentials remain on the server.
+- IndexedDB draft/history storage on the current device and browser origin; offline manual entry and an installable PWA shell.
 
-## Run locally
+Records are not automatically backed up to a shared cloud database. The access code protects server API use; it is not individual worker account management or encryption of local records. Audio is captured only after microphone permission and recording consent. Browser background recording is not guaranteed; keep the app open while recording. The template is not represented as an official ASHA questionnaire or a clinical diagnosis system.
 
-Requirements: Node.js 22+ (Vercel project uses Node 24), npm.
+## Development
+
+Use Node.js 22+ (deployment uses Node24):
 
 ```bash
 npm ci
 cp .env.example .env.local
+# Set private workspace credentials and provider keys in .env.local.
 npm run dev
 ```
-
-Open `http://localhost:3000`. No API keys are needed.
 
 ```bash
 npm run typecheck
@@ -41,41 +45,20 @@ npm start
 npm run test:e2e
 ```
 
-The production build generates the offline service worker after Next.js creates its assets. Test installation/offline mode against `npm start` or the deployed HTTPS app; development mode intentionally does not register a service worker.
-
-## Architecture
-
-- **Next.js / React / TypeScript**: one frontend and Node API deployment.
-- **Shared field schema + Zod**: validate API shapes and values.
-- **Immutable patch engine**: visit/member validation, evidence checks, duplicate suppression, per-field sequence order, explicit manual ownership and conflict review.
-- **Dexie / IndexedDB**: queued transactional local saves and stale-write detection. No ephemeral server-memory database and no claim of cloud sync.
-- **PWA**: manifest, installable icons and a versioned static app shell. API responses and household records are excluded from service-worker caching.
-- **System typography / semantic CSS**: no external font download or animation framework.
-
-The backend's sample endpoint accepts only sample household/segment identifiers. Live endpoints return `503 INTEGRATION_NOT_CONFIGURED`. Secrets remain server-side environment placeholders. See [integration activation](docs/INTEGRATIONS.md).
+CI uses its own synthetic workspace code and mocked provider responses for browser checks. It does not use production API keys. Tests never require real household information. Provider smoke checks are separately documented.
 
 ## Project documents
 
-- [Phase plan and tracked TODOs](PLAN.md)
-- [Next rebuild: template-driven family health survey](docs/NEXT_REBUILD.md)
-- [Five-project research and reuse decisions](docs/RESEARCH.md)
-- [Product and design system](docs/DESIGN.md)
-- [Shared data contract](docs/CONTRACT.md)
-- [Provider integration and production requirements](docs/INTEGRATIONS.md)
-- [Verification record](docs/VERIFICATION.md)
-- [Optimization record](docs/OPTIMIZATION.md)
+- [Plan and next phases](PLAN.md)
+- [Family survey specification](docs/NEXT_REBUILD.md)
+- [Provider contracts and verification](docs/PROVIDERS.md)
+- [Five-project research](docs/RESEARCH.md)
 - [Release record](docs/RELEASE.md)
 
-## Important boundaries
+## Deployment
 
-This is not an official ASHA questionnaire, clinical decision tool or authenticated patient-record service. Field bounds catch implausible data entry; they are not clinical normal ranges. Observation prompts preserve reports for worker review and do not diagnose or issue automated emergency instructions. The questionnaire and referral rules require local clinical review before real use.
-
-Records remain in this browser origin, without cloud backup or application-level encryption. Clearing browser data removes them. Exporting creates a JSON file on the user's device. Demo entry is not authentication. Browser/PWA background recording is not implemented or promised.
-
-## GitHub and Vercel
-
-Source belongs in [SanskariXD/DARA](https://github.com/SanskariXD/DARA). The Vercel project is `dara` in `Sanskari's projects`. The connected Vercel account could not link this GitHub repository because the Vercel GitHub installation does not currently grant the required access. The public production app was deployed directly from the verified source. Enable repository access in Vercel's GitHub integration and connect DARA to get automatic future deploys. No token is stored in the repository.
+The Vercel project is `dara` in `Sanskari's projects`. Source is deployed directly because Vercel's GitHub installation does not currently grant DARA repository access. Enable that access and connect the repository to get automatic future deployments. Real credentials belong in encrypted/sensitive environment variables; `.env.local` is ignored.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Third-party dependencies retain their own licenses. CHT/ODK/JSON Forms were architectural references; no AGPL application code was copied.
+MIT. Third-party dependencies retain their licenses. CHT/ODK/JSON Forms were architectural references; no AGPL application code was copied.

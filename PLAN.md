@@ -8,7 +8,7 @@ Started: 13 November 2026 (Asia/Kolkata)
 ## Refined brief
 Build an installable, responsive household register for ASHA workers. A worker selects a household, sees its members and previous visits, opens a visit and keeps asking the visible questions naturally. Finalized Gnani transcripts will be sent to Gemini for structured, evidence-backed field changes. A deterministic engine validates and applies these changes without moving the screen or overwriting manual edits. At review, show missing data, uncertain/conflicting answers and reported concerns. Preserve the speaker's original report and the correct household member. Only reviewed clinical rules may authorize future spoken alerts.
 
-This release deliberately uses synthetic records and explicit provider placeholders. No real patient data, paid integrations, or external AI calls. It must remain useful with manual entry and demonstrate the asynchronous extraction flow honestly. The user expressly requested these placeholders; live provider credentials and clinical validation are a later activation phase.
+Current release: **0.2 reference-led redesign and live providers**. The workspace starts empty. Gnani transcribes microphone audio and Gemini proposes evidence-backed form updates. Private workspace access protects paid API calls. Records remain device-local until a shared, authorized database is provisioned. The original 0.1 phases below are historical; the rebuild checklist records the current work.
 
 ## Phase 1 — Research and decisions
 - [x] Inspect the target GitHub repository and permissions.
@@ -59,21 +59,21 @@ This release deliberately uses synthetic records and explicit provider placehold
 
 ## Next rebuild — Template-driven family health surveys
 
-Add this feature in the next rebuild; it is not part of the current deployed release. The full interaction and acceptance notes are in [`docs/NEXT_REBUILD.md`](docs/NEXT_REBUILD.md).
+This rebuild is implemented alongside the reference-led redesign and live provider connections; release verification is in progress. The full interaction and acceptance notes are in [`docs/NEXT_REBUILD.md`](docs/NEXT_REBUILD.md).
 
-- [ ] Add a versioned survey-template registry, starting with a Family Health Survey template and its required, optional, repeatable and conditional fields.
-- [ ] Let the worker start a fresh survey for a household whose survey answers are missing, or intentionally start the survey again. Begin with unanswered template fields rather than carrying old clinical answers forward.
-- [ ] Allow the worker to add household-level or per-member survey fields manually, with a label, supported input type and optional/required setting.
-- [ ] Ask household size in the conversation; when the worker confirms the stated count, create that many empty member sections from the template.
-- [ ] Map later answers such as each person’s name, relationship and age to the right member and template field; preserve evidence, identify uncertainty and protect manual edits.
-- [ ] Keep additional relevant information in notes with its transcript evidence and member attribution where clear; put unclear attribution into review rather than guessing.
-- [ ] Review count, member identities, missing required answers, conflicts and notes before completing the survey; keep completed surveys immutable and allow a requested repeat as a new survey.
-- [ ] Add unit, persistence, API-contract, browser and 360px/tablet/desktop regression coverage before deployment.
+- [x] Add a versioned survey-template registry, starting with a Family Health Survey template and its required, optional, repeatable and conditional fields.
+- [x] Let the worker start a fresh survey for a household whose survey answers are missing, or intentionally start the survey again. Begin with unanswered template fields rather than carrying old clinical answers forward.
+- [x] Allow the worker to add household-level or per-member survey fields manually, with a label, supported input type and optional/required setting.
+- [x] Ask household size in the conversation; when the conversation explicitly states the count, automatically create that many empty member sections from the template.
+- [x] Map later answers such as each person’s name, relationship and age to the right member and template field; preserve evidence, identify uncertainty and protect manual edits.
+- [x] Keep additional relevant information in notes with its transcript evidence and member attribution where clear; put unclear attribution into review rather than guessing.
+- [x] Review count, member identities, missing required answers, conflicts and notes before completing the survey; keep completed surveys immutable and allow a requested repeat as a new survey.
+- [x] Add unit, persistence, API-contract, browser and 360px/tablet/desktop regression coverage before deployment.
 
 ### Acceptance for the next rebuild
 
 - A new or repeated survey starts with a blank answer set while retaining only household context needed to select the family and start the visit.
-- A spoken family size of three creates exactly three editable member sections after confirmation; corrections update the count safely without losing already reviewed entries silently.
+- A spoken family size of three creates exactly three editable member sections automatically; corrections update the count safely without losing already reviewed entries silently.
 - Names, relationships, ages and other answers attach to the correct member and template fields only when supported by the conversation; uncertain answers and attribution remain visible for worker review.
 - Additional information can be added to notes with source evidence. No household health answer is silently inferred from old visits or generated from missing data.
 - The worker can edit all generated fields, add optional fields, pause/recover a draft, review it and complete it without changes to earlier completed surveys.
@@ -87,11 +87,12 @@ Add this feature in the next rebuild; it is not part of the current deployed rel
 - Optimization agent: performance and UX audit.
 - Main agent: integration, API routes, PWA, verification coordination, GitHub and Vercel release.
 
-## Deferred activation (intentionally not part of placeholder release)
+## Remaining production infrastructure and validation
 - [ ] Grant the Vercel GitHub installation DARA repository access, then connect it for automatic Git deployments.
 - [ ] Provision real authentication and household-scoped database access; verify row-level access.
-- [ ] Connect Gnani streaming using a captured official response trace and reconnection tests.
-- [ ] Connect Gemini structured extraction and benchmark Kannada/Hindi/English accuracy and p50/p95.
+- [x] Connect Gnani speech transcription through bounded WAV requests and verify a synthetic audio trace. Streaming WebSockets are not required for this implementation.
+- [x] Connect Gemini structured extraction and verify a synthetic multi-person survey.
+- [ ] Benchmark Kannada/Hindi/English accuracy and latency across representative devices and networks.
 - [ ] Clinician-approved danger-sign rules and Gnani TTS with echo suppression.
 - [ ] Device/privacy/security review before real personal health information is entered.
 
@@ -101,9 +102,20 @@ Add this feature in the next rebuild; it is not part of the current deployed rel
 - Vercel project `dara` created successfully. Automatic Git linking was rejected because the Vercel GitHub installation does not currently grant DARA access. Direct source deployment is the release path.
 - The local Chromium runner is restricted by the execution environment. All five browser scenarios passed in GitHub Actions; deployed visual and functional verification also passed.
 
-## Release checkpoint
+## Previous release checkpoint (0.1)
 
 - Public app: https://dara-sigma.vercel.app/
 - Deployed implementation commit: `4318178e6c751b162ea7050fdf6ea5410662efee`. Later release-documentation updates do not change runtime application source.
 - CI: 60 unit/API/persistence regressions and five Chromium workflows passed; type checking and production build passed.
 - Details and exact deployment identity: `docs/RELEASE.md`.
+
+## Rebuild 0.2 — Reference design and live speech
+
+- [x] Analyze the supplied blue intro and lavender mobile UI references.
+- [x] Implement blank versioned family surveys, automatic member sections, custom fields, notes, manual protection and review.
+- [x] Add real Gnani WAV transcription and Gemini extraction adapters with server-side credentials.
+- [x] Add private workspace access for paid provider calls and bounded request validation.
+- [x] Integrate the full responsive interface and recording flow.
+- [x] Verify spoken audio through the real providers, alongside deterministic regression coverage.
+- [ ] Review phone/tablet/desktop screenshots and resolve functional findings.
+- [ ] Push verified source and deploy the rebuild.

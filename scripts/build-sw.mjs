@@ -1,4 +1,4 @@
-import { readdir, writeFile } from "node:fs/promises";
+import { readdir, writeFile, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -16,11 +16,13 @@ const files = (await walk(".next/static"))
   .sort();
 const version = createHash("sha256")
   .update(files.join("\n"))
+  .update(await readFile("public/pcm-capture.js"))
   .digest("hex")
   .slice(0, 12);
 const shell = [
   "/",
   "/icon.svg",
+  "/pcm-capture.js",
   "/icon-192.png",
   "/icon-512.png",
   "/manifest.webmanifest",

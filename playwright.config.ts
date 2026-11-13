@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 const baseURL = process.env.BASE_URL || "http://127.0.0.1:3000";
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "e2e.spec.ts",
+  testMatch: "rebuild.e2e.spec.ts",
   fullyParallel: false,
   workers: 1,
   timeout: 30000,

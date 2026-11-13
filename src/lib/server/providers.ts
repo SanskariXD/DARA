@@ -1,12 +1,29 @@
 import { jsonError } from "./http";
 
-export type IntegrationName =
-  "extraction" | "speech" | "speech-output" | "authentication" | "cloud-sync";
-/** Intentional closed boundary. Never turn a public demo endpoint into a paid, unauthenticated provider proxy. */
-export function unavailableIntegration(name: IntegrationName) {
-  return jsonError(
-    503,
-    "INTEGRATION_NOT_CONFIGURED",
-    `${name} is not connected in this demo. Manual records and sample conversations are available.`,
-  );
+export class ProviderError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ProviderError";
+  }
+}
+
+export function providerErrorResponse(error: unknown): Response | null {
+  return error instanceof ProviderError
+    ? jsonError(error.status, error.code, error.message)
+    : null;
+}
+
+/** Presence is configuration, not a claim that a credential is currently valid. */
+export function providerConfiguration() {
+  return {
+    speech: process.env.GNANI_API_KEY?.trim() ? "configured" : "not-configured",
+    extraction: process.env.GEMINI_API_KEY?.trim()
+      ? "configured"
+      : "not-configured",
+    model: process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash-lite",
+  };
 }
