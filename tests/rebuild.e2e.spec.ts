@@ -796,6 +796,34 @@ test("all six interface languages preserve names, custom choices and free-text a
     await expect(page.locator(".family-section h3")).toHaveText("Households");
     await page.setViewportSize({ width: 390, height: 844 });
     await noOverflow(page);
+    const stepLabelOverflow = await page
+      .locator(".survey-progress button")
+      .evaluateAll((buttons) =>
+        buttons.flatMap((button) => {
+          const label = button.querySelector("strong");
+          if (!label) return [{ label: "Missing step label" }];
+          const bounds = button.getBoundingClientRect();
+          const text = document.createRange();
+          text.selectNodeContents(label);
+          return [...text.getClientRects()]
+            .filter(
+              (line) =>
+                line.width > 0 &&
+                (line.left < bounds.left - 1 || line.right > bounds.right + 1),
+            )
+            .map((line) => ({
+              label: label.textContent,
+              textLeft: line.left,
+              textRight: line.right,
+              buttonLeft: bounds.left,
+              buttonRight: bounds.right,
+            }));
+        }),
+      );
+    expect(
+      stepLabelOverflow,
+      `${language} survey labels fit their steps`,
+    ).toEqual([]);
     await capture(page, testInfo, `family-${language}-390`);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.locator(".survey-progress button").nth(3).click();

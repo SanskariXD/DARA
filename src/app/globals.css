@@ -3421,9 +3421,10 @@ button {
   .survey-progress button {
     display: flex;
     align-items: flex-start;
-    justify-content: center;
+    justify-content: flex-start;
     flex-direction: column;
     gap: 8px;
+    min-width: 0;
     min-height: 54px;
     padding: 5px 0;
   }
@@ -3435,6 +3436,10 @@ button {
     font-size: 0.6875rem;
     font-weight: 450;
     letter-spacing: -0.025em;
+    max-width: calc(100% - 8px);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
   }
   .survey-progress button.current::before {
     display: none;
