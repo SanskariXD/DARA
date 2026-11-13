@@ -138,9 +138,11 @@ test("blank survey, manual identities, custom question, review, immutable histor
     .getByLabel("Question", { exact: true })
     .fill("Preferred visit time");
   await custom
-    .getByLabel("Ask about", { exact: true })
+    .getByRole("combobox", { name: "Ask about", exact: true })
     .selectOption("household");
-  await custom.getByLabel("Answer type", { exact: true }).selectOption("text");
+  await custom
+    .getByRole("combobox", { name: "Answer type", exact: true })
+    .selectOption("text");
   await custom
     .getByRole("checkbox", { name: "Require an answer before finishing" })
     .check();

@@ -26,6 +26,9 @@
 }
 html {
   font-size: 16px;
+  scroll-behavior: auto;
+}
+html:has(.landing) {
   scroll-behavior: smooth;
 }
 body {
@@ -3307,17 +3310,18 @@ button {
   }
   .answer-field {
     border-radius: 23px;
-    padding: 21px 23px 9px;
+    padding: 16px 23px 8px;
   }
   .answer-field > label {
     font-size: 0.875rem;
     gap: 7px;
+    margin-bottom: 6px;
   }
   .answer-field input,
   .answer-field select {
     font-size: 1.125rem;
-    min-height: 50px;
-    padding: 12px 0;
+    min-height: 48px;
+    padding: 10px 0;
   }
   .answer-field textarea {
     font-size: 1rem;
@@ -3326,12 +3330,12 @@ button {
   }
   .answer-help {
     font-size: 0.8125rem;
-    min-height: 31px;
-    padding-top: 7px;
+    min-height: 26px;
+    padding-top: 4px;
   }
   .answer-source {
     font-size: 0.8125rem;
-    min-height: 27px;
+    min-height: 22px;
   }
   .required-label,
   .field-unit,
@@ -3369,7 +3373,7 @@ button {
     font-size: 0.8125rem;
   }
   .family-section .answer-field {
-    padding: 19px 20px 9px;
+    padding: 15px 20px 8px;
     border-radius: 21px;
   }
   .member-number {
@@ -4073,14 +4077,14 @@ button {
     font-size: 1.45rem;
   }
   .answer-field {
-    padding: 20px 19px 9px;
+    padding: 16px 19px 8px;
   }
   .family-section {
     padding: 18px 13px 13px;
   }
   .family-section .answer-field,
   .health-card .answer-field {
-    padding: 18px 17px 8px;
+    padding: 15px 17px 8px;
   }
   .health-card {
     padding: 20px 13px 13px;

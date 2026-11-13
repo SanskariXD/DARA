@@ -863,6 +863,12 @@ export default function DaraApp() {
         value={record.values[field.id]}
         meta={record.meta[field.id]}
         disabled={survey.status === "completed" || busy}
+        needsReview={survey.conflicts.some(
+          (conflict) =>
+            !conflict.resolved &&
+            conflict.memberId === member &&
+            conflict.fieldId === field.id,
+        )}
         issue={
           issues.find(
             (i) =>
@@ -1357,7 +1363,7 @@ export default function DaraApp() {
                   <h1>
                     {survey.status === "completed"
                       ? "Your visit record."
-                      : "A conversation, clearly recorded."}
+                      : "Family health survey"}
                   </h1>
                 </div>
                 <button
@@ -2585,6 +2591,7 @@ function AnswerField({
   value,
   meta,
   disabled,
+  needsReview,
   issue,
   onChange,
   onFocus,
@@ -2595,6 +2602,7 @@ function AnswerField({
   value: SurveyValue | undefined;
   meta?: { source: string; manuallyProtected: boolean; evidence?: string };
   disabled: boolean;
+  needsReview: boolean;
   issue?: string;
   onChange: (value: SurveyValue) => void;
   onFocus: () => void;
@@ -2664,6 +2672,8 @@ function AnswerField({
       <div className="answer-help" id={`${id}-help`}>
         {issue ? (
           <span>{issue}</span>
+        ) : needsReview ? (
+          <span>Needs review</span>
         ) : meta?.manuallyProtected ? (
           <span>Edited by you</span>
         ) : meta?.source === "extracted" ? (
