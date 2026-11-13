@@ -16,6 +16,7 @@ import {
   createSurvey,
   editSurveyField,
   completeSurvey,
+  createFollowUpSurvey,
   surveySchema,
   type Survey,
 } from "../src/lib/survey";
@@ -103,6 +104,43 @@ describe("empty device survey workspace", () => {
     );
     expect((await repo.loadWorkspace()).surveys[0].revision).toBe(1);
   });
+  it("persists overlapping rebased local changes in order without reporting a tab conflict", async () => {
+    const { repo } = open();
+    await repo.loadWorkspace();
+    await repo.saveHousehold(household());
+    let latest = editSurveyField(draft(), null, "familySize", 1);
+    const memberId = latest.members[0].id;
+    latest = editSurveyField(latest, memberId, "name", "Local Test Person");
+    await repo.saveSurvey(latest);
+    // The UI mutation authority rebases each result before its prior write settles.
+    // Storage must serialize those monotonic snapshots without dropping any change.
+    const commit = (change: (current: Survey) => Survey) => {
+      latest = change(latest);
+      return repo.saveSurvey(latest);
+    };
+    await Promise.all([
+      commit((current) => editSurveyField(current, memberId, "age", "32")),
+      commit((current) =>
+        editSurveyField(current, memberId, "healthHistory", "Reported cough"),
+      ),
+      commit((current) =>
+        editSurveyField(
+          current,
+          null,
+          "householdNotes",
+          "Morning follow-up requested",
+        ),
+      ),
+      repo.saveSurvey(latest),
+    ]);
+    const persisted = (await repo.loadWorkspace()).surveys[0];
+    expect(withoutEpoch(persisted)).toEqual(latest);
+    expect(persisted.members[0].values.age).toBe("32");
+    expect(persisted.members[0].values.healthHistory).toBe("Reported cough");
+    expect(persisted.household.values.householdNotes).toBe(
+      "Morning follow-up requested",
+    );
+  });
   it("rejects divergent same-revision snapshots and missing households", async () => {
     const { repo } = open();
     await repo.loadWorkspace();
@@ -113,7 +151,10 @@ describe("empty device survey workspace", () => {
     await repo.saveSurvey(draft());
     await expect(
       repo.saveSurvey({ ...draft(), updatedAt: "2026-11-13T12:01:00Z" }),
-    ).rejects.toBeInstanceOf(SurveyStorageConflict);
+    ).rejects.toMatchObject({
+      name: "SurveyStorageConflict",
+      reason: "outdated-draft",
+    });
   });
   it("detects independent tab edits even with a greater domain revision", async () => {
     const { repo, name } = open();
@@ -125,7 +166,10 @@ describe("empty device survey workspace", () => {
     await repo.saveSurvey({ ...draft(), revision: 1 });
     await expect(
       other.saveSurvey({ ...draft(), revision: 9 }),
-    ).rejects.toBeInstanceOf(SurveyStorageConflict);
+    ).rejects.toMatchObject({
+      name: "SurveyStorageConflict",
+      reason: "concurrent-change",
+    });
     await other.exportWorkspace();
     await expect(
       other.saveSurvey({ ...draft(), revision: 10 }),
@@ -576,6 +620,129 @@ describe("example seeding, migration and explicit reset", () => {
       migration.mockRestore();
       raw.close();
     }
+  });
+
+  it("persists a suggested pregnancy follow-up once while preserving chosen dates and completed history", async () => {
+    const { repo, name } = open();
+    await repo.loadWorkspace();
+    await repo.saveHousehold(household());
+    let pregnant = createSurvey(
+      { householdId: "home-1", templateId: "pregnancy-follow-up" },
+      "2026-11-13T12:00:00Z",
+      "pregnancy-suggestion",
+    );
+    pregnant = editSurveyField(pregnant, null, "familySize", 1);
+    const memberId = pregnant.members[0].id;
+    pregnant = editSurveyField(
+      pregnant,
+      memberId,
+      "name",
+      "Fictional Test Mother",
+    );
+    pregnant = editSurveyField(pregnant, memberId, "age", 28);
+    pregnant = editSurveyField(pregnant, memberId, "pregnancyStatus", "yes");
+    const legacy = structuredClone(pregnant);
+    delete legacy.members[0].values.nextCareVisit;
+    delete legacy.members[0].meta.nextCareVisit;
+    legacy.audit = legacy.audit.filter(
+      (entry) => entry.fieldId !== "nextCareVisit",
+    );
+    const chosen = editSurveyField(
+      { ...structuredClone(legacy), id: "chosen-date" },
+      memberId,
+      "nextCareVisit",
+      "2026-12-04",
+    );
+    const cleared = editSurveyField(
+      { ...structuredClone(pregnant), id: "cleared-date" },
+      memberId,
+      "nextCareVisit",
+      "",
+    );
+    const completedLegacy = completeSurvey({
+      ...structuredClone(legacy),
+      id: "completed-pregnancy",
+    });
+    const rows = [legacy, chosen, cleared, completedLegacy].map((value) => ({
+      id: value.id,
+      householdId: value.householdId,
+      value,
+      version: 7,
+    }));
+    const raw = new Dexie(name);
+    await raw.open();
+    try {
+      await raw.table("surveys").bulkPut(rows);
+      await raw.table("meta").delete("pregnancy-follow-up-suggestions:1");
+      const { repo: upgraded } = open(name);
+      const loaded = await upgraded.loadWorkspace();
+      const suggested = loaded.surveys.find((item) => item.id === legacy.id)!;
+      expect(suggested.members[0].values.nextCareVisit).toBe("2026-11-27");
+      expect(suggested.members[0].meta.nextCareVisit.suggested).toBe(true);
+      expect(
+        loaded.surveys.find((item) => item.id === chosen.id)?.members[0].values
+          .nextCareVisit,
+      ).toBe("2026-12-04");
+      expect(
+        loaded.surveys.find((item) => item.id === cleared.id)?.members[0].values
+          .nextCareVisit,
+      ).toBe("");
+      expect(await raw.table("surveys").get(completedLegacy.id)).toEqual(
+        rows[3],
+      );
+      const afterFirstLoad = await raw.table("surveys").toArray();
+      await upgraded.loadWorkspace();
+      expect(await raw.table("surveys").toArray()).toEqual(afterFirstLoad);
+      const manuallyCleared = editSurveyField(
+        suggested,
+        suggested.members[0].id,
+        "nextCareVisit",
+        "",
+      );
+      await upgraded.saveSurvey(manuallyCleared);
+      expect(
+        (await upgraded.loadWorkspace()).surveys.find(
+          (item) => item.id === legacy.id,
+        )?.members[0].values.nextCareVisit,
+      ).toBe("");
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("persists a pregnancy follow-up as a new visit without changing its completed source", async () => {
+    const { repo } = open();
+    const workspace = await repo.loadWorkspace();
+    await repo.saveHousehold(household());
+    let prior = editSurveyField(draft(), null, "familySize", 1);
+    const memberId = prior.members[0].id;
+    prior = editSurveyField(prior, memberId, "name", "Fictional Prior Mother");
+    prior = editSurveyField(prior, memberId, "age", 28);
+    prior = editSurveyField(prior, memberId, "pregnancyStatus", "yes");
+    prior = completeSurvey(prior);
+    await repo.completeSurvey(prior);
+    const followUp = createFollowUpSurvey(
+      {
+        householdId: prior.householdId,
+        priorSurvey: prior,
+        kind: "pregnancy",
+        workspaceGeneration: workspace.generation,
+      },
+      "2026-12-01T12:00:00Z",
+      "pregnancy-repeat",
+    );
+    await Promise.all([repo.saveSurvey(followUp), repo.saveSurvey(followUp)]);
+    const loaded = await repo.loadWorkspace();
+    expect(loaded.surveys).toHaveLength(2);
+    expect(
+      withoutEpoch(loaded.surveys.find((item) => item.id === prior.id)!),
+    ).toEqual(prior);
+    const saved = loaded.surveys.find((item) => item.id === followUp.id)!;
+    expect(saved.repeatOf).toBe(prior.id);
+    expect(saved.identityReviewRequired).toBe(true);
+    expect(saved.members[0].values.nextCareVisit).toBe("2026-12-15");
+    expect(saved.members[0].meta.nextCareVisit.suggested).toBe(true);
+    expect(saved.members[0].meta.name.carriedFromSurveyId).toBe(prior.id);
   });
 });
 

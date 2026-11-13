@@ -1,3 +1,4 @@
+import { FOLLOW_UP_COPY } from "./followup";
 import { CARE_COPY } from "./care";
 import { ADDITIONAL_COPY } from "./additions";
 import { VALIDATION_COPY } from "./validation";
@@ -20,6 +21,7 @@ for (const row of [
   VALIDATION_COPY,
   ADDITIONAL_COPY,
   CARE_COPY,
+  FOLLOW_UP_COPY,
 ]
   .map((copy) => copy.trim())
   .join("\n")

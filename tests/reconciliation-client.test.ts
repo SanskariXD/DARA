@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createSurvey,
+  editSurveyField,
   addSurveyTranscript,
   type SurveyTranscript,
 } from "../src/lib/survey";
 import {
   reconcileSurveyBatch,
+  applyReconciliationBatch,
   reconciliationBatches,
   reconciliationRequest,
   surveyConversationFingerprint,
@@ -181,5 +183,110 @@ describe("full-conversation batching and response boundaries", () => {
         ),
       }),
     ).not.toBe(original);
+  });
+});
+
+describe("queued reconciliation protects newer records", () => {
+  function pending() {
+    const segment = passage(0, "There are 2 family members.");
+    const survey = surveyWith([segment]);
+    const response = {
+      surveyId: survey.id,
+      baseRevision: survey.revision,
+      checkedSegmentIds: [segment.id],
+      envelopes: [
+        {
+          surveyId: survey.id,
+          baseRevision: survey.revision,
+          segmentId: segment.id,
+          segmentIndex: 0,
+          mode: "reconcile" as const,
+          result: {
+            familySize: 2,
+            familySizeEvidence: segment.text,
+            members: [],
+            notes: [],
+          },
+        },
+      ],
+    };
+    return { survey, response };
+  }
+  it("rebases into the latest record without replacing unrelated manually entered answers", () => {
+    const { survey, response } = pending();
+    const current = editSurveyField(
+      survey,
+      null,
+      "householdPhone",
+      "9876543210",
+    );
+    const updated = applyReconciliationBatch(current, survey, response);
+    expect(updated.household.values.householdPhone).toBe("9876543210");
+    expect(updated.household.values.familySize).toBe(2);
+    expect(updated.members).toHaveLength(2);
+  });
+  it("rejects reset generations, other visits, completed records and changed source passages", () => {
+    const { survey, response } = pending();
+    const records = [
+      { ...survey, workspaceGeneration: "reset-generation" },
+      { ...survey, id: "other-visit" },
+      { ...survey, status: "completed" as const },
+      {
+        ...survey,
+        transcripts: [
+          { ...survey.transcripts[0], text: "There are 3 family members." },
+        ],
+      },
+    ];
+    for (const record of records)
+      expect(applyReconciliationBatch(record, survey, response)).toBe(record);
+  });
+  it("preserves manual and currently focused answers", () => {
+    const { survey, response } = pending();
+    const manual = editSurveyField(survey, null, "familySize", 3);
+    expect(
+      applyReconciliationBatch(manual, survey, response).household.values
+        .familySize,
+    ).toBe(3);
+    expect(
+      applyReconciliationBatch(survey, survey, response, [
+        "household.familySize",
+      ]).household.values.familySize,
+    ).toBeUndefined();
+  });
+  it("invalidates an earlier check when extracted answers or protection change, without using audit-only revisions", () => {
+    const { survey } = pending();
+    const fingerprint = surveyConversationFingerprint(survey);
+    const changed = {
+      ...survey,
+      household: {
+        ...survey.household,
+        values: { ...survey.household.values, householdPhone: "1234567890" },
+      },
+    };
+    expect(surveyConversationFingerprint(changed)).not.toBe(fingerprint);
+    expect(
+      surveyConversationFingerprint({
+        ...survey,
+        revision: survey.revision + 1,
+      }),
+    ).toBe(fingerprint);
+    const protectedAnswer = {
+      ...changed,
+      household: {
+        ...changed.household,
+        meta: {
+          householdPhone: {
+            source: "manual" as const,
+            revision: changed.revision,
+            segmentIndex: -1,
+            manuallyProtected: true,
+          },
+        },
+      },
+    };
+    expect(surveyConversationFingerprint(protectedAnswer)).not.toBe(
+      surveyConversationFingerprint(changed),
+    );
   });
 });

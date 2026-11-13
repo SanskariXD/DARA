@@ -84,7 +84,7 @@ export function useSurveys() {
       workspaceGeneration &&
       workspaceGeneration !== current.current.generation
     )
-      throw new storage.SurveyStorageConflict();
+      throw new storage.SurveyStorageConflict("workspace-reset");
   };
   const stampSurvey = (survey: Survey): Survey => {
     assertWritable(survey.workspaceGeneration);

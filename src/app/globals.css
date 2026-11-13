@@ -1681,6 +1681,50 @@ button {
   display: grid;
   gap: 13px;
 }
+.identity-review-card {
+  padding: 23px;
+  margin-bottom: 22px;
+  background: #fff;
+  border: 1px solid #ded1ed;
+  border-radius: 24px;
+}
+.identity-review-card h3 {
+  font-size: 1rem;
+  font-weight: 550;
+}
+.identity-review-card p {
+  color: #6d5b7d;
+  font-size: 0.875rem;
+  line-height: 1.75;
+  margin-top: 9px;
+}
+.identity-review-card label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding-top: 12px;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  cursor: pointer;
+}
+.identity-review-card input {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  margin: 0;
+  accent-color: #74539e;
+}
+.care-context-note {
+  padding: 13px 15px;
+  margin: 0 0 18px;
+  color: #6d5b7d;
+  background: #faf7fe;
+  border-radius: 15px;
+  font-size: 0.8125rem;
+  line-height: 1.75;
+}
 .health-member-row {
   display: flex;
   width: 100%;

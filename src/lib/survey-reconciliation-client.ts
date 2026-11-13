@@ -1,5 +1,7 @@
+import { selectSurveyContext } from "./survey-context";
 import { z } from "zod";
 import {
+  applySurveyReconciliation,
   surveyExtractionSchema,
   type Survey,
   type SurveyTranscript,
@@ -63,9 +65,8 @@ export function reconciliationRequest(
   segments: SurveyTranscript[],
 ): string {
   const first = Math.min(...segments.map((item) => item.index));
-  const prior = survey.transcripts
-    .filter((item) => item.index < first)
-    .slice(-2);
+  const context = selectSurveyContext(survey, first, 2);
+  const prior = [...context.segments];
   const snapshot: Survey = {
     ...survey,
     transcripts: [...prior, ...segments],
@@ -78,8 +79,14 @@ export function reconciliationRequest(
   let body = JSON.stringify({ survey: snapshot, segments });
   // Context passages are optional. Keep the original target passages intact,
   // and drop optional context first when UTF-8 Indic text approaches the cap.
-  while (new TextEncoder().encode(body).byteLength > 256000 && prior.length) {
-    prior.shift();
+  while (
+    new TextEncoder().encode(body).byteLength > 256000 &&
+    prior.some((segment) => !context.anchorIds.includes(segment.id))
+  ) {
+    prior.splice(
+      prior.findIndex((segment) => !context.anchorIds.includes(segment.id)),
+      1,
+    );
     snapshot.transcripts = [...prior, ...segments];
     body = JSON.stringify({ survey: snapshot, segments });
   }
@@ -148,6 +155,48 @@ export async function reconcileSurveyBatch(
   return parsed.data;
 }
 
+/** Run only inside the UI's serialized latest-record mutation authority. A response
+ * may rebase over unrelated edits, but never cross a visit/reset or edited source. */
+export function applyReconciliationBatch(
+  current: Survey,
+  requested: Survey,
+  response: ReconciliationResponse,
+  protectedKeys: string[] = [],
+): Survey {
+  if (
+    current.id !== requested.id ||
+    current.workspaceGeneration !== requested.workspaceGeneration ||
+    current.status !== "draft" ||
+    current.revision < requested.revision ||
+    response.surveyId !== requested.id ||
+    response.baseRevision !== requested.revision
+  )
+    return current;
+  for (const id of response.checkedSegmentIds) {
+    const original = requested.transcripts.find((segment) => segment.id === id);
+    const latest = current.transcripts.find((segment) => segment.id === id);
+    if (
+      !original ||
+      !latest ||
+      JSON.stringify(original) !== JSON.stringify(latest)
+    )
+      return current;
+  }
+  let next = current;
+  for (const envelope of [...response.envelopes].sort(
+    (a, b) => b.segmentIndex - a.segmentIndex,
+  )) {
+    if (
+      envelope.surveyId !== requested.id ||
+      envelope.baseRevision !== requested.revision ||
+      !response.checkedSegmentIds.includes(envelope.segmentId)
+    )
+      return current;
+    next = applySurveyReconciliation(next, envelope, protectedKeys);
+  }
+  return next;
+}
+
 const hashes = new WeakMap<SurveyTranscript, string>();
 function textHash(segment: SurveyTranscript) {
   const saved = hashes.get(segment);
@@ -174,6 +223,21 @@ export function surveyFieldFingerprint(survey: Survey) {
   // Labels and options affect what the model can recover, including custom questions.
   return JSON.stringify(survey.fields);
 }
+export function surveyAnswerFingerprint(survey: Survey) {
+  const record = (answer: Survey["household"]) => [
+    answer.values,
+    Object.fromEntries(
+      Object.entries(answer.meta).map(([id, meta]) => {
+        const { revision: _revision, ...ownership } = meta;
+        return [id, ownership];
+      }),
+    ),
+  ];
+  return JSON.stringify([
+    record(survey.household),
+    ...survey.members.map((member) => [member.id, record(member)]),
+  ]);
+}
 export function surveyConversationFingerprint(survey: Survey) {
-  return `${survey.id}:${survey.workspaceGeneration ?? ""}:${survey.templateId}:${survey.templateVersion}:${surveyFieldFingerprint(survey)}:${surveyRosterFingerprint(survey)}:${survey.transcripts.map(textHash).join("|")}`;
+  return `${survey.id}:${survey.workspaceGeneration ?? ""}:${survey.templateId}:${survey.templateVersion}:${survey.identityReviewRequired ?? false}:${surveyFieldFingerprint(survey)}:${surveyRosterFingerprint(survey)}:${surveyAnswerFingerprint(survey)}:${survey.transcripts.map(textHash).join("|")}`;
 }

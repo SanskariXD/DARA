@@ -1,4 +1,4 @@
-# Live provider connections — DARA 0.4
+# Live provider connections — DARA 0.5
 
 Verified on 13 November 2026. The server connects to Gnani for speech recognition and Google Gemini for structured extraction. No provider key is returned to the browser. Survey records remain on this device; these connections do not add cloud record storage or individual staff accounts.
 
@@ -26,6 +26,8 @@ The adapter uses `https://generativelanguage.googleapis.com/v1beta/models/{model
 
 The compact wire response uses sparse field arrays with IDs, string values and individual exact source quotes. Version 2 member proposals also carry attribution proof: `{ kind, reference, evidence, segmentId }`. The server validates original quote provenance; the engine verifies identity again for each field, so a broad passage containing several names cannot justify assigning one person's answer to another.
 
+The context separately identifies the respondent and the relative currently being discussed. An explicit self-introduction remains the anchor for first-person answers after discussion of a spouse. For example, Ajay reporting his wife Anisha's age does not make a later “My age is 21” or “I have fever” refer to Anisha. Reconciliation includes discourse context for each target passage, rather than applying only the final conversation subject to the entire batch. Proof still cites an exact original passage; this context does not authorize guessed speakers or sex inferred from names.
+
 Existing extracted values change only with explicit correction metadata matching the previous value and an exact corrective quote. Manual answers, focused fields and manually cleared blanks remain protected. `fieldEvidence` retains each quote. A repeated unchanged family count without new evidence is discarded; an unsupported changed count is rejected. If the model concatenates distant quotations, an enclosing original passage is recovered only from independently verified unique field quotes. No synthetic transcript is created.
 
 The prompt distinguishes reported BP conditions from numeric BP measurements, specific negative symptoms from an overall report of no concerns, and reported fever from a measured temperature. Unified `healthHistory` preserves exact factual quotes; optional fever duration, temperature and breathing details use only active template fields and explicit evidence. Version 3 requires an explicit temperature unit; a bare report such as “temperature 103” remains in the original history with a request to confirm its unit. Legacy fields remain readable but are excluded from extraction destinations. These rules reduce known failure modes; they do not certify semantic accuracy.
@@ -38,7 +40,9 @@ The ordinary route returns `{ surveyId, segmentId, segmentIndex, baseRevision, r
 
 `POST /api/reconcile` accepts `{ survey, segments }`: a compact survey snapshot, 1–12 exact original target segments, at most 16,000 target text characters, and at most two earlier context passages. The JSON body limit is 256,000 bytes to accommodate duplicated native-script text; model context is capped at 70,000 characters. Source IDs, indices, text and metadata must match the supplied originals. Completed surveys and fabricated or duplicated passages are rejected.
 
-One model request inspects the batch. It must acknowledge every target ID and return original per-segment proposals. The response is `{ surveyId, baseRevision, checkedSegmentIds, envelopes }`; every envelope uses `mode: 'reconcile'`. The server removes proposals for nonblank, manually protected or newer-source values. Version 3 permits a narrow additive exception for distinct original quotes in machine-generated `healthHistory` and `householdNotes`, using the same eligibility helper as the engine. The engine repeats checks against the latest full browser record, including manually cleared blanks, corrections and audit history omitted from the compact request. Reconciliation never replaces an existing narrative or restores an older retracted fact.
+One model request inspects the batch. It must acknowledge every target ID and return original per-segment proposals. The response is `{ surveyId, baseRevision, checkedSegmentIds, envelopes }`; every envelope uses `mode: 'reconcile'`. Missing fields can be filled and distinct original quotes can be appended to eligible machine-generated `healthHistory` and `householdNotes`.
+
+Version 0.5 also permits a bounded repair of a machine-derived answer using `corrections: [{ fieldId, kind: 'reconciliation', previousValue, evidence }]`. This fixes an interpretation or attribution error supported by the original record, without pretending that the speaker verbally corrected the fact. The prior value must still match, the answer must remain eligible by source and revision, and original field and identity evidence must validate. The live extraction endpoint rejects reconciliation-only correction metadata. Manual answers, manually cleared blanks, focused fields and later authoritative corrections remain protected. The engine repeats eligibility checks against the latest full browser record, including audit history omitted from the compact request; a model response cannot directly delete or replace a record.
 
 The client must cover all original segments in newest-first batches and show progress or partial failure. One successful batch is not proof of a complete-history review. A second bounded pass can resolve earlier missing answers after roster identities become available. Reconciliation has the same session/origin gate, provider deadline and error handling as live extraction.
 
@@ -99,3 +103,20 @@ Five synthetic Gemini requests covered four scenarios. The first English request
 The real pregnancy response exposed a deterministic false negative for speaker-prefixed `ASHA:` enquiries/advice. Normalizing recognized worker labels and accepting the direct “Include…” instruction fixed both checkboxes; the same captured response then passed without another paid request. The model also incorrectly proposed antenatal counselling from a patient appointment report: the engine rejected it and retained a review uncertainty. An unassigned family-wide no-fever proposal remained for review rather than being attached to a particular member.
 
 These are text-extraction and repository persistence checks, not proof of field speech accuracy. They did not re-test Gnani audio recognition, actual device IndexedDB, noisy Kannada recordings, or mobile microphones. Those still require human-recorded field validation and worker review.
+
+## DARA 0.5 respondent and repair findings
+
+Eight bounded synthetic Gemini requests were made. Four returned upstream HTTP 503; the last reported `UNAVAILABLE`. Four returned HTTP 200: an initial Kannada response was safely rejected for invented stable member IDs, English and Kannada introductions passed, and a Kannada reconciliation returned the health and correction proposals. The response schema now permits only existing stable IDs or `null` for a new person, and the prompt explicitly handles spoken household-count words. No patient data or credentials were logged.
+
+The synthetic conversation introduced Ajay, then discussed his wife Anisha, age 20, before returning to “My age is 21”, fever for a week and difficulty breathing. Both successful introduction responses preserved the two distinct people and Anisha's wife relationship. Direct health requests and the English reconciliation encountered provider 503 responses, so this round does **not** establish successful live English health extraction or sustained provider availability. Failed extraction retains its original passage for automatic background review; it is not marked processed.
+
+The successful Kannada reconciliation was tested against an intentionally corrupted machine-owned fixture: Ajay's age was 20, Anisha's relationship was husband, and Ajay's health facts had been copied onto Anisha. Its real wire response exposed two additional compatibility gaps, fixed and replayed offline: numeric `previousValue: "20"` is normalized only for a declared number field, and an exact quote naming the known wife can prove her identity even when the stored relationship is wrong.
+
+| Final replay through the current decoder, engine and repository | Persisted result |
+| --- | --- |
+| Respondent Ajay | Age 21; concerns; seven fever days; breathing difficulty yes; exact Kannada health history. |
+| Wife Anisha | Age 20; wife; female from the explicit relationship. The identical wrongly assigned health copies were cleared. |
+| Household | Original Kannada water-supply note retained. |
+| Ownership and focus | Separate replay variants preserved manual age 77, a manual relationship, a focused relationship and focused history. |
+
+All 14 repair checks passed, with zero remaining conflicts or uncertainties in the repaired fixture. Both successful introduction responses also passed final replay. Persistence used the actual repository with fake IndexedDB; no further provider requests were made for replay. These results verify a real Kannada model response and deterministic recovery, not noisy speech recognition, real-device storage, latency guarantees or broad multilingual accuracy.

@@ -6,11 +6,40 @@ Owner: Anjan Shetty • Repository: https://github.com/SanskariXD/DARA
 Started: 13 November 2026 (Asia/Kolkata)
 
 ## Refined brief
+
 Build an installable, responsive household register for ASHA workers. A worker selects a household, sees its members and previous visits, opens a visit and keeps asking the visible questions naturally. Finalized Gnani transcripts will be sent to Gemini for structured, evidence-backed field changes. A deterministic engine validates and applies these changes without moving the screen or overwriting manual edits. At review, show missing data, uncertain/conflicting answers and reported concerns. Preserve the speaker's original report and the correct household member. Only reviewed clinical rules may authorize future spoken alerts.
 
-Current release: **0.3 multilingual survey refinement**, deployed at https://dara-sigma.vercel.app/. Five fictional examples, six local interface languages, automatic speech detection, precise person attribution/corrections, focused health forms, full-conversation recovery and confirmed reset are implemented and verified. Records remain device-local. Earlier phases below are historical.
+Current work: **0.5 — reliable updates and household follow-ups**. Preserve the current lavender workspace and blue introduction. Improve the record update pipeline, reuse household identity without copying old health answers, and make pregnancy follow-up a continuation of confirmed care. Records remain device-local; provider and persistence failures must be stated accurately. Earlier phases below are historical.
+
+## Version 0.5 delivery tracker
+
+| Phase                       | Owner                      | Reviewable outcome                                                                                                                                                       | Status                            |
+| --------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
+| 1. Diagnose record races    | Data + realtime            | Reproduce competing manual/live/recheck writes; distinguish same-tab sequencing from a genuine external conflict                                                         | Implemented; verification pending |
+| 2. Stabilize updates        | Data + realtime + UI       | Ordered persistence and latest-state patch application, preserving true multi-tab CAS and reset generation checks                                                        | Implemented; verification pending |
+| 3. Household follow-ups     | Engine + UI                | New survey and Monsoon reuse only known roster/contact, with explicit member verification and fresh health answers                                                       | Implemented; verification pending |
+| 4. Pregnancy care           | Engine + UI                | Care opens after confirmed pregnancy; editable next-visit suggestion 14 days later; follow-up action only with confirmed history and clearly labelled prior care context | Implemented; verification pending |
+| 5. Actionable review        | Engine + UI + localization | Resolve obsolete prompts, group remaining questions, keep worker-facing errors clear and honest                                                                          | Implemented; verification pending |
+| 6. Independent verification | Verification               | Manual/async/save races, reload, roster changes, pregnancy transitions, focus/scroll, languages, mobile layouts and failure recovery                                     | Pending                           |
+| 7. Release                  | Verification + root        | Build, publish tested source, inspect deployed flows, record deployment and stop                                                                                         | Pending                           |
+
+- [x] Reproduce and fix false same-tab storage conflicts without weakening external-write protection.
+- [x] Route extraction and full-conversation reconciliation through current draft state; run recovery during intake as well as review.
+- [x] Remove direct pregnancy creation; expose only eligible pregnancy follow-ups from household history.
+- [x] Carry member identity and contact into New survey/Monsoon, show its source, and allow additions/removals before completion.
+- [x] Keep new general/Monsoon health and notes empty; label any intentionally carried pregnancy care context.
+- [x] Suggest an editable next visit 14 days after confirmed pregnancy, without replacing a worker-entered date.
+- [x] Show only unresolved actionable review questions and real failure messages.
+- [ ] Verify draft survival, reset isolation, stable focus/caret/scroll, and immutable completed history.
+- [ ] Complete localization, independent tests, production build, deployment and live verification.
+
+### Version 0.5 verification evidence
+
+- Domain/storage/provider integration: **183 tests passed across 9 suites** (engine independent run); TypeScript passed. Coverage includes exact speaker attribution, existing-value repair protections, carried-identity confirmation, pregnancy eligibility, and editable 14-day suggestions.
+- UI implementation and CSS are frozen pending browser verification. All new interface copy has six-language coverage. Final hook/localization and complete browser results will be recorded by the release verifier.
 
 ## Phase 1 — Research and decisions
+
 - [x] Inspect the target GitHub repository and permissions.
 - [x] Verify five mature GitHub references, licenses, activity and relevant capabilities.
 - [x] Commit research findings in `docs/RESEARCH.md`.
@@ -18,6 +47,7 @@ Current release: **0.3 multilingual survey refinement**, deployed at https://dar
 - [x] Record the Apple-inspired design system and interaction rules.
 
 ## Phase 2 — Foundation and backend
+
 - [x] Create typed household, member, visit, transcript, patch, conflict and audit models.
 - [x] Implement incremental validated patches, duplicate suppression and stale response handling.
 - [x] Protect manually edited and focused fields; expose conflicts for review.
@@ -26,6 +56,7 @@ Current release: **0.3 multilingual survey refinement**, deployed at https://dar
 - [x] Create `.env.example`, ignore secrets, document future provider activation.
 
 ## Phase 3 — Frontend and local records
+
 - [x] Build demo entry, household directory/search/filter/add, household detail and member views.
 - [x] Build visit form, manual editing, pause/resume sample transcript flow, progress and transcript evidence.
 - [x] Build review/finish, conflict decisions, history, follow-ups, settings and export.
@@ -34,6 +65,7 @@ Current release: **0.3 multilingual survey refinement**, deployed at https://dar
 - [x] Installable PWA, offline app shell, safe areas, keyboard and reduced-motion support.
 
 ## Phase 4 — Independent verification
+
 - [x] Unit tests for patch order, manual protection, member attribution, evidence, invalid numbers, deduplication, review and completion.
 - [x] Integration tests for local persistence and API limits/configuration failure.
 - [x] Browser flows on desktop/mobile: directory → visit → corrections → review → saved history.
@@ -41,6 +73,7 @@ Current release: **0.3 multilingual survey refinement**, deployed at https://dar
 - [x] Independent security/functionality review; fix material findings.
 
 ## Phase 5 — Optimization and release
+
 - [x] Independent bundle, render and UX review; implement useful measured improvements.
 - [x] Re-run affected checks after fixes; production build.
 - [x] Commit and push source, plan, docs, tests and lockfile to `main`.
@@ -49,6 +82,7 @@ Current release: **0.3 multilingual survey refinement**, deployed at https://dar
 - [x] Record release URL, commit and verified limitations, then stop.
 
 ## Acceptance criteria
+
 - All visible navigation and primary actions work; no fake live AI or fake cloud save status.
 - Updates target a specific member and field, retain transcript evidence and cannot replace an active/manual edit silently.
 - Duplicate or stale extraction cannot regress newer values. Completed records cannot change through delayed jobs.
@@ -79,6 +113,7 @@ This rebuild is implemented alongside the reference-led redesign and live provid
 - The worker can edit all generated fields, add optional fields, pause/recover a draft, review it and complete it without changes to earlier completed surveys.
 
 ## Team ownership
+
 - Research agent: five-project assessment.
 - Design/frontend agent: design system and interface.
 - Engine agent: domain model, validators, patch engine and invariant tests.
@@ -88,6 +123,7 @@ This rebuild is implemented alongside the reference-led redesign and live provid
 - Main agent: integration, API routes, PWA, verification coordination, GitHub and Vercel release.
 
 ## Remaining production infrastructure and validation
+
 - [x] Verify automatic Git deployments: production commit `62a4cc7` deployed through the Git integration on 13 November 2026.
 - [ ] Provision real authentication and household-scoped database access; verify row-level access.
 - [x] Connect Gnani speech transcription through bounded WAV requests and verify a synthetic audio trace. Streaming WebSockets are not required for this implementation.
@@ -128,7 +164,6 @@ This rebuild is implemented alongside the reference-led redesign and live provid
 - Hosted authenticated extraction created three synthetic members; hosted speech transcription returned a valid response.
 - Shared database, individual worker accounts, official questionnaire approval and field accuracy validation remain the next infrastructure/validation work.
 
-
 ## Release 0.3 — Family attribution, simpler surveys and local languages
 
 User feedback: working voice workflow needs more reliable person-specific mapping and corrections, multilingual health extraction, focused health forms, example records, reset, and full interface localization.
@@ -155,7 +190,6 @@ Privacy and validation boundaries remain as documented in docs/INTEGRATIONS.md. 
 - Production deployment: `dpl_AVuDD9Vx9z1ENSTZdq5kJ1W77nVJ`; same public address and private workspace code.
 - Source and client-bundle secret scans passed. Hosted reconciliation recovered only the expected synthetic missing answer.
 - Release details and verification record: [docs/RELEASE.md](docs/RELEASE.md).
-
 
 ## Release 0.4 — Reliable health capture and care visits
 

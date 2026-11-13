@@ -4,6 +4,7 @@ import {
   surveySchema,
   reviewSurvey,
   migrateDraftSurvey,
+  ensurePregnancyFollowUpSuggestion,
   type Survey,
 } from "./survey";
 import {
@@ -51,9 +52,18 @@ interface Metadata {
   generation: string;
 }
 export class SurveyStorageConflict extends Error {
-  constructor() {
+  constructor(
+    readonly reason:
+      | "concurrent-change"
+      | "outdated-draft"
+      | "workspace-reset" = "concurrent-change",
+  ) {
     super(
-      "This record changed in another tab. Your edits are still on screen. Export a copy or reload before continuing.",
+      reason === "workspace-reset"
+        ? "The workspace was reset. Reopen a household to continue."
+        : reason === "outdated-draft"
+          ? "A newer draft is already saved. Your current edits are kept here; export them before reopening this visit."
+          : "This record was updated elsewhere. Your edits are kept here; export them before reopening the record.",
     );
     this.name = "SurveyStorageConflict";
   }
@@ -102,6 +112,7 @@ const settingsSchema = z.object({
 const clone = <T>(value: T): T => structuredClone(value);
 const equal = (left: unknown, right: unknown) =>
   JSON.stringify(left) === JSON.stringify(right);
+const PREGNANCY_SUGGESTION_UPGRADE = "pregnancy-follow-up-suggestions:1";
 // Workspace epochs belong to the editing session, not the historical survey snapshot.
 const withoutGeneration = <T extends { workspaceGeneration?: string }>(
   value: T,
@@ -249,13 +260,20 @@ export function createSurveyRepository(
         await meta.add(marker);
       }
       await seedExamples(marker.generation);
+      const suggestFollowUps = !(await meta.get(PREGNANCY_SUGGESTION_UPGRADE));
       // Migrate only editable drafts. Completed snapshots are never rewritten by an upgrade.
       for (const row of await surveys.toArray()) {
-        if (row.value.status !== "draft" || row.value.templateVersion >= 3)
+        if (
+          row.value.status !== "draft" ||
+          (row.value.templateVersion >= 3 && !suggestFollowUps)
+        )
           continue;
-        const migrated = migrateDraftSurvey(parseSurvey(row.value));
+        let migrated = migrateDraftSurvey(parseSurvey(row.value));
         // An upgrade must never replace a readable draft with a snapshot that
         // the current reader cannot hydrate. Keep the original for a later fix.
+        if (!surveySchema.safeParse(migrated).success) continue;
+        if (suggestFollowUps)
+          migrated = ensurePregnancyFollowUpSuggestion(migrated);
         if (!surveySchema.safeParse(migrated).success) continue;
         if (!equal(migrated, row.value))
           await surveys.put({
@@ -264,6 +282,11 @@ export function createSurveyRepository(
             version: row.version + 1,
           });
       }
+      if (suggestFollowUps)
+        await meta.put({
+          id: PREGNANCY_SUGGESTION_UPGRADE,
+          generation: marker.generation,
+        });
     });
   const checkGeneration = async (expectedGeneration = generation) => {
     const marker = await meta.get("workspace");
@@ -273,7 +296,7 @@ export function createSurveyRepository(
       marker?.generation !== generation ||
       marker.generation !== expectedGeneration
     )
-      throw new SurveyStorageConflict();
+      throw new SurveyStorageConflict("workspace-reset");
   };
   const checkVersion = <T>(
     key: string,
@@ -358,7 +381,7 @@ export function createSurveyRepository(
                 "Completed surveys are read-only. Start a repeat survey to record changes.",
               );
             if (snapshot.revision <= saved.value.revision)
-              throw new SurveyStorageConflict();
+              throw new SurveyStorageConflict("outdated-draft");
             if (
               snapshot.createdAt !== saved.value.createdAt ||
               snapshot.templateId !== saved.value.templateId ||
@@ -496,6 +519,10 @@ export function createSurveyRepository(
           await meta.put({ id: "workspace", generation: nextGeneration });
           await meta.put({
             id: `examples:${EXAMPLE_SEED_VERSION}`,
+            generation: nextGeneration,
+          });
+          await meta.put({
+            id: PREGNANCY_SUGGESTION_UPGRADE,
             generation: nextGeneration,
           });
         });

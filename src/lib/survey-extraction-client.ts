@@ -1,3 +1,4 @@
+import { selectSurveyContext } from "./survey-context";
 import {
   surveyExtractionEnvelopeSchema,
   type Survey,
@@ -12,9 +13,8 @@ export async function extractSurvey(
   segment: SurveyTranscript,
 ): Promise<SurveyExtractionEnvelope> {
   // Keep current values/ownership, but never upload a growing audit or full transcript.
-  const recent = survey.transcripts
-    .filter((item) => item.index < segment.index)
-    .slice(-6);
+  const context = selectSurveyContext(survey, segment.index, 6);
+  const recent = [...context.segments];
   const snapshot: Survey = {
     ...survey,
     transcripts: [...recent, segment],
@@ -24,7 +24,18 @@ export async function extractSurvey(
     uncertainties: [],
     notes: [],
   };
-  const body = JSON.stringify({ survey: snapshot, segment });
+  let body = JSON.stringify({ survey: snapshot, segment });
+  while (
+    new TextEncoder().encode(body).byteLength > 50_000 &&
+    recent.some((item) => !context.anchorIds.includes(item.id))
+  ) {
+    recent.splice(
+      recent.findIndex((item) => !context.anchorIds.includes(item.id)),
+      1,
+    );
+    snapshot.transcripts = [...recent, segment];
+    body = JSON.stringify({ survey: snapshot, segment });
+  }
   if (new TextEncoder().encode(body).byteLength > 50_000)
     throw new Error(
       "This survey has too much context for one update. Continue manually or start a shorter survey.",

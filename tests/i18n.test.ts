@@ -67,6 +67,24 @@ describe("bundled UI translations", () => {
       }
     }
   });
+  it("localizes dynamic review questions and repeat-visit confirmation copy", () => {
+    for (const key of [
+      "Who does this report belong to?",
+      "Which answer should be kept?",
+      "Which details should be kept in this answer?",
+      "Does the conversation support this answer?",
+      "Where should this report be recorded?",
+      "What should be recorded from this part of the conversation?",
+      "Confirm household members",
+      "I confirmed who lives in this household.",
+      "Previous visit",
+      "Suggested date",
+      "Pregnancy follow-up",
+      "Monsoon visit",
+    ])
+      for (const language of languages)
+        expect(translate(language, key)).not.toBe(key);
+  });
   it("covers every literal translation call rendered in the app", () => {
     const source = readFileSync(
       new URL("../src/components/dara-app.tsx", import.meta.url),

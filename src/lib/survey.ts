@@ -8,7 +8,6 @@ import {
   mentionedRelationships,
   evidenceSupportsRelationship,
   relationshipsCompatible,
-  lastRelationshipReferenceIndex,
 } from "./survey-relations";
 export {
   RELATIONSHIP_OPTIONS,
@@ -36,6 +35,15 @@ export {
   hasExplicitTemperatureUnit,
 } from "./survey-care";
 
+import {
+  resolveSurveyEvidenceSubject,
+  relationshipForNamedPerson,
+} from "./survey-discourse";
+export {
+  getSurveyDiscourseContext,
+  resolveSurveyEvidenceSubject,
+} from "./survey-discourse";
+
 export type SurveyValue = string | number | boolean | null;
 export type SurveyFieldType = "text" | "number" | "select" | "textarea";
 export interface SurveyFieldDefinition {
@@ -55,7 +63,11 @@ export interface SurveyFieldMeta {
   source: "manual" | "extracted" | "derived" | "migration";
   revision: number;
   segmentIndex: number;
-  derivedFrom?: "relation";
+  derivedFrom?: "relation" | "follow-up-suggestion";
+  carriedFromSurveyId?: string;
+  carriedFromDate?: string;
+  carriedValue?: SurveyValue;
+  suggested?: boolean;
   manuallyProtected: boolean;
   evidence?: string;
   segmentId?: string;
@@ -125,6 +137,7 @@ export interface Survey {
   revision: number;
   repeatOf?: string;
   workspaceGeneration?: string;
+  identityReviewRequired?: boolean;
   fields: SurveyFieldDefinition[];
   household: SurveyAnswerRecord;
   members: SurveyMember[];
@@ -170,6 +183,7 @@ export const surveyCorrectionSchema = z
     fieldId: z.string().min(1).max(120),
     previousValue: valueSchema,
     evidence: evidenceSchema,
+    kind: z.enum(["spoken", "reconciliation"]).optional(),
   })
   .strict();
 export const extractedSurveyMemberSchema = z
@@ -320,7 +334,11 @@ export const surveyFieldSchema = z
 const metaSchema = z
   .object({
     source: z.enum(["manual", "extracted", "derived", "migration"]),
-    derivedFrom: z.literal("relation").optional(),
+    derivedFrom: z.enum(["relation", "follow-up-suggestion"]).optional(),
+    carriedFromSurveyId: z.string().max(160).optional(),
+    carriedFromDate: z.string().datetime().optional(),
+    carriedValue: valueSchema.optional(),
+    suggested: z.boolean().optional(),
     revision: z.number().int().nonnegative(),
     segmentIndex: z.number().int().min(-1),
     manuallyProtected: z.boolean(),
@@ -356,6 +374,7 @@ export const surveySchema = z
     revision: z.number().int().nonnegative(),
     repeatOf: z.string().max(160).optional(),
     workspaceGeneration: z.string().min(1).max(160).optional(),
+    identityReviewRequired: z.boolean().optional(),
     fields: z.array(surveyFieldSchema).max(160),
     household: z.object(recordShape).strict(),
     members: z
@@ -983,6 +1002,203 @@ export function createRainySurveyFromPrior(
   return next;
 }
 
+export function isPregnancyFollowUpEligible(
+  survey: Survey | undefined,
+): boolean {
+  return !!survey?.members.some(
+    (member) =>
+      member.values.pregnancyStatus === "yes" ||
+      ["pregnant", "postnatal"].includes(String(member.values.maternalStage)),
+  );
+}
+export function createFollowUpSurvey(
+  input: {
+    householdId: string;
+    priorSurvey?: Survey;
+    kind?: "family" | "pregnancy" | "rainy";
+    workspaceGeneration?: string;
+  },
+  now = nowIso(),
+  id = `survey-${crypto.randomUUID()}`,
+): Survey {
+  const prior =
+    input.priorSurvey?.householdId === input.householdId
+      ? input.priorSurvey
+      : undefined;
+  if (input.kind === "pregnancy" && !isPregnancyFollowUpEligible(prior))
+    throw new Error(
+      "A pregnancy follow-up needs a previously confirmed pregnancy in this household.",
+    );
+  const blank = createSurvey(
+    {
+      householdId: input.householdId,
+      kind: input.kind ?? "family",
+      workspaceGeneration: input.workspaceGeneration,
+    },
+    now,
+    id,
+  );
+  const copied = createRainySurveyFromPrior(
+    { ...input, priorSurvey: prior },
+    now,
+    id,
+  );
+  let next: Survey = {
+    ...copied,
+    templateId: blank.templateId,
+    fields: blank.fields,
+    identityReviewRequired: copied.members.length > 0,
+  };
+  if (prior)
+    next = {
+      ...next,
+      household: {
+        ...next.household,
+        meta: Object.fromEntries(
+          Object.entries(next.household.meta).map(([fieldId, meta]) => [
+            fieldId,
+            {
+              ...meta,
+              carriedFromSurveyId: prior.id,
+              carriedFromDate: prior.completedAt ?? prior.updatedAt,
+              carriedValue: next.household.values[fieldId],
+            },
+          ]),
+        ),
+      },
+      members: next.members.map((member) => ({
+        ...member,
+        meta: Object.fromEntries(
+          Object.entries(member.meta).map(([fieldId, meta]) => [
+            fieldId,
+            {
+              ...meta,
+              carriedFromSurveyId: prior.id,
+              carriedFromDate: prior.completedAt ?? prior.updatedAt,
+              carriedValue: member.values[fieldId],
+            },
+          ]),
+        ),
+      })),
+    };
+  if (input.kind === "pregnancy" && prior) {
+    const identities = prior.members.filter((member) =>
+      ["name", "age", "relation", "sex"].some(
+        (key) => !isBlank(member.values[key]),
+      ),
+    );
+    next = {
+      ...next,
+      members: next.members.map((member, index) => {
+        const original = identities[index];
+        if (!original) return member;
+        const values = { ...member.values },
+          meta = { ...member.meta };
+        for (const fieldId of PREGNANCY_FIELD_IDS) {
+          if (
+            CARE_CHECKLIST_IDS.includes(fieldId) ||
+            isBlank(original.values[fieldId])
+          )
+            continue;
+          values[fieldId] = original.values[fieldId];
+          meta[fieldId] = {
+            source: "migration",
+            revision: 0,
+            segmentIndex: -1,
+            manuallyProtected: false,
+            carriedFromSurveyId: prior.id,
+            carriedFromDate: prior.completedAt ?? prior.updatedAt,
+            carriedValue: original.values[fieldId],
+          };
+        }
+        return { ...member, values, meta };
+      }),
+    };
+  }
+  return ensurePregnancyFollowUpSuggestion(next, now);
+}
+export function confirmCarriedIdentities(
+  survey: Survey,
+  now = nowIso(),
+): Survey {
+  return survey.status === "draft" && survey.identityReviewRequired
+    ? finishMutation({ ...survey, identityReviewRequired: false }, now)
+    : survey;
+}
+function addPregnancyFollowUpSuggestions(
+  survey: Survey,
+  revision: number,
+): Survey {
+  if (survey.status !== "draft" || survey.templateVersion < 3) return survey;
+  const date = new Date(survey.createdAt);
+  date.setUTCDate(date.getUTCDate() + 14);
+  const suggested = date.toISOString().slice(0, 10);
+  let changed = false;
+  const members = survey.members.map((member) => {
+    const ended =
+      member.values.maternalStage === "postnatal" ||
+      ["no", "not-applicable"].includes(String(member.values.pregnancyStatus));
+    if (
+      ended &&
+      member.meta.nextCareVisit?.derivedFrom === "follow-up-suggestion" &&
+      member.meta.nextCareVisit.suggested &&
+      !member.meta.nextCareVisit.manuallyProtected
+    ) {
+      if (isBlank(member.values.nextCareVisit)) return member;
+      changed = true;
+      return {
+        ...member,
+        values: { ...member.values, nextCareVisit: null },
+        meta: {
+          ...member.meta,
+          nextCareVisit: { ...member.meta.nextCareVisit, revision },
+        },
+      };
+    }
+    if (ended) return member;
+    if (
+      member.values.pregnancyStatus !== "yes" &&
+      member.values.maternalStage !== "pregnant"
+    )
+      return member;
+    const previous = member.meta.nextCareVisit;
+    if (
+      previous?.manuallyProtected ||
+      (!isBlank(member.values.nextCareVisit) &&
+        (!previous?.carriedFromSurveyId || previous.suggested))
+    )
+      return member;
+    changed = true;
+    return {
+      ...member,
+      values: { ...member.values, nextCareVisit: suggested },
+      meta: {
+        ...member.meta,
+        nextCareVisit: {
+          ...previous,
+          source: "derived" as const,
+          derivedFrom: "follow-up-suggestion" as const,
+          suggested: true,
+          revision,
+          segmentIndex: -1,
+          manuallyProtected: false,
+        },
+      },
+    };
+  });
+  return changed ? { ...survey, members } : survey;
+}
+/** A worker-editable planning suggestion, never a clinical schedule or a reported answer. */
+export function ensurePregnancyFollowUpSuggestion(
+  survey: Survey,
+  now = nowIso(),
+): Survey {
+  const next = addPregnancyFollowUpSuggestions(survey, survey.revision + 1);
+  return next === survey
+    ? survey
+    : { ...next, revision: survey.revision + 1, updatedAt: now };
+}
+
 export function normalizeSurveyValue(
   field: SurveyFieldDefinition,
   value: SurveyValue,
@@ -1109,7 +1325,10 @@ function changeRecord(
       };
 }
 function finishMutation(survey: Survey, now: string): Survey {
-  return { ...survey, revision: survey.revision + 1, updatedAt: now };
+  return addPregnancyFollowUpSuggestions(
+    { ...survey, revision: survey.revision + 1, updatedAt: now },
+    survey.revision + 1,
+  );
 }
 function recordAudit(
   survey: Survey,
@@ -1474,6 +1693,117 @@ export function canAppendSurveyNarrative(
   });
 }
 
+export function canRepairSurveyField(
+  survey: Survey,
+  memberId: string | null,
+  fieldId: string,
+  segmentIndex: number,
+  baseRevision = survey.revision,
+): boolean {
+  const record = getRecord(survey, memberId),
+    meta = record?.meta[fieldId];
+  return (
+    survey.status === "draft" &&
+    !!meta &&
+    ["extracted", "derived"].includes(meta.source) &&
+    !meta.manuallyProtected &&
+    meta.revision <= baseRevision &&
+    meta.segmentIndex <= segmentIndex &&
+    !survey.audit.some(
+      (entry) =>
+        entry.memberId === memberId &&
+        entry.fieldId === fieldId &&
+        ["manual", "resolution"].includes(entry.source),
+    )
+  );
+}
+
+function clearMisassignedMachineCopy(
+  survey: Survey,
+  targetId: string,
+  fieldId: string,
+  value: SurveyValue,
+  evidence: string,
+  segment: SurveyTranscript,
+  baseRevision: number,
+  active: Set<string>,
+  now: string,
+): Survey {
+  const subject = resolveSurveyEvidenceSubject(survey, segment, evidence);
+  if (!subject.firstPerson || subject.memberId !== targetId) return survey;
+  let next = survey;
+  for (const member of survey.members) {
+    const meta = member.meta[fieldId];
+    if (
+      member.id === targetId ||
+      active.has(`${member.id}.${fieldId}`) ||
+      !meta ||
+      meta.source !== "extracted" ||
+      meta.manuallyProtected ||
+      meta.revision > baseRevision ||
+      meta.segmentId !== segment.id ||
+      !meta.evidence ||
+      !(meta.evidence.includes(evidence) || evidence.includes(meta.evidence)) ||
+      resolveSurveyEvidenceSubject(survey, segment, meta.evidence).memberId !==
+        targetId ||
+      member.values[fieldId] !== value
+    )
+      continue;
+    next = changeRecord(next, member.id, {
+      values: { ...member.values, [fieldId]: null },
+      meta: {
+        ...member.meta,
+        [fieldId]: {
+          source: "extracted",
+          revision: survey.revision + 1,
+          segmentIndex: -1,
+          manuallyProtected: false,
+        },
+      },
+    });
+    next = recordAudit(
+      next,
+      member.id,
+      fieldId,
+      member.values[fieldId],
+      null,
+      "extracted",
+      now,
+      evidence,
+    );
+  }
+  return next;
+}
+function retireResolvedAttribution(
+  survey: Survey,
+  segment: SurveyTranscript,
+  memberId: string,
+  evidence: string,
+): Survey {
+  let changed = false;
+  const uncertainties = survey.uncertainties.map((item) => {
+    const technical =
+      /person reference|identify this member|person assignment|nearest person|conversation moved|could not be assigned|first-person answer|member assignment/i.test(
+        item.message,
+      );
+    if (
+      !item.resolved &&
+      technical &&
+      item.segmentId === segment.id &&
+      (item.memberId == null ||
+        item.memberId === memberId ||
+        resolveSurveyEvidenceSubject(survey, segment, item.evidence)
+          .memberId === memberId) &&
+      (item.evidence === evidence || evidence.includes(item.evidence))
+    ) {
+      changed = true;
+      return { ...item, resolved: true };
+    }
+    return item;
+  });
+  return changed ? { ...survey, uncertainties } : survey;
+}
+
 /** Exact evidence and explicit member references are required; semantic accuracy remains reviewable. */
 export function applySurveyExtraction(
   survey: Survey,
@@ -1562,6 +1892,45 @@ export function applySurveyExtraction(
     touched.add(key);
     const meta = record.meta[fieldId];
     const currentValue = record.values[fieldId] ?? null;
+    if (
+      fillOnly &&
+      memberId &&
+      !active.has(key) &&
+      normalizeSurveyValue(field, input) ===
+        normalizeSurveyValue(field, currentValue)
+    ) {
+      next = retireResolvedAttribution(
+        clearMisassignedMachineCopy(
+          next,
+          memberId,
+          fieldId,
+          currentValue,
+          evidence,
+          segment,
+          envelope.baseRevision,
+          active,
+          now,
+        ),
+        segment,
+        memberId,
+        evidence,
+      );
+      return;
+    }
+    const machineRepair =
+      fillOnly &&
+      correction?.kind === "reconciliation" &&
+      canRepairSurveyField(
+        survey,
+        memberId,
+        fieldId,
+        segment.index,
+        envelope.baseRevision,
+      ) &&
+      normalizeSurveyValue(field, correction.previousValue) ===
+        normalizeSurveyValue(field, currentValue) &&
+      exactEvidence(segment, correction.evidence) &&
+      !active.has(key);
     const appendRecovery =
       fillOnly &&
       canAppendSurveyNarrative(
@@ -1575,13 +1944,20 @@ export function applySurveyExtraction(
     if (
       fillOnly &&
       !appendRecovery &&
+      !machineRepair &&
       (!isBlank(currentValue) ||
         meta?.manuallyProtected ||
         active.has(key) ||
         (meta?.revision ?? 0) > envelope.baseRevision)
     )
       return;
-    if (meta && meta.segmentIndex >= segment.index && !appendRecovery) return;
+    if (
+      meta &&
+      meta.segmentIndex >= segment.index &&
+      !appendRecovery &&
+      !machineRepair
+    )
+      return;
     let value = normalizeSurveyValue(field, input);
     if (
       [
@@ -1601,9 +1977,10 @@ export function applySurveyExtraction(
         correction.evidence,
       );
     const validCorrection =
-      !!correctiveQuote &&
-      normalizeSurveyValue(field, correction!.previousValue) ===
-        normalizeSurveyValue(field, currentValue);
+      machineRepair ||
+      (!!correctiveQuote &&
+        normalizeSurveyValue(field, correction!.previousValue) ===
+          normalizeSurveyValue(field, currentValue));
     if (
       ["healthHistory", "householdNotes"].includes(fieldId) &&
       (!fillOnly || appendRecovery) &&
@@ -1626,7 +2003,26 @@ export function applySurveyExtraction(
       );
       return;
     }
-    if (fillOnly && value === currentValue) return;
+    if (fillOnly && value === currentValue) {
+      if (memberId)
+        next = retireResolvedAttribution(
+          clearMisassignedMachineCopy(
+            next,
+            memberId,
+            fieldId,
+            value,
+            evidence,
+            segment,
+            envelope.baseRevision,
+            active,
+            now,
+          ),
+          segment,
+          memberId,
+          evidence,
+        );
+      return;
+    }
     // Preserve the latest source order even if the candidate remains unresolved.
     next = changeRecord(next, memberId, {
       ...record,
@@ -1652,6 +2048,7 @@ export function applySurveyExtraction(
       !equivalent &&
       !["healthHistory", "householdNotes"].includes(fieldId) &&
       meta?.source !== "derived" &&
+      !meta?.carriedFromSurveyId &&
       !validCorrection;
     if (problem || (protectedByWorker && !equivalent) || needsCorrection) {
       const conflict: SurveyConflict = {
@@ -1726,6 +2123,21 @@ export function applySurveyExtraction(
         now,
         evidence,
       );
+    if (memberId) {
+      if (fillOnly)
+        next = clearMisassignedMachineCopy(
+          next,
+          memberId,
+          fieldId,
+          value,
+          evidence,
+          segment,
+          envelope.baseRevision,
+          active,
+          now,
+        );
+      next = retireResolvedAttribution(next, segment, memberId, evidence);
+    }
     if (memberId === null && fieldId === "familySize")
       next = reconcileFamilySize(next, Number(value));
   };
@@ -1908,6 +2320,31 @@ export function applySurveyExtraction(
           next,
           segment,
           "The temperature unit was not stated. The original report is retained in conversation review; confirm Celsius or Fahrenheit before recording a measurement.",
+          evidence,
+          member.id,
+        );
+        return;
+      }
+      const namedRelation = relationshipForNamedPerson(
+        segment.text,
+        String(member.values.name ?? proposal.name ?? ""),
+      );
+      if (
+        fieldId === "relation" &&
+        namedRelation &&
+        !relationshipsCompatible(String(value), namedRelation)
+      )
+        value = namedRelation;
+      if (
+        fieldId === "sex" &&
+        namedRelation &&
+        relationshipSex(namedRelation) &&
+        value !== relationshipSex(namedRelation)
+      ) {
+        next = addUncertainty(
+          next,
+          segment,
+          "The reported sex conflicts with the named relationship. Confirm the member's answer.",
           evidence,
           member.id,
         );
@@ -2262,6 +2699,14 @@ export function reviewSurveyNote(
 
 export function reviewSurvey(survey: Survey): SurveyReviewIssue[] {
   const issues: SurveyReviewIssue[] = [];
+  if (survey.identityReviewRequired)
+    issues.push({
+      id: "carried-identities",
+      memberId: null,
+      fieldId: "identityReviewRequired",
+      kind: "uncertain",
+      message: "Confirm the carried-forward household members for this visit.",
+    });
   const records: [string | null, SurveyAnswerRecord][] = [
     [null, survey.household],
     ...survey.members.map(
@@ -2732,11 +3177,26 @@ function attributionProblem(
   const nameSupported = (reference: string) =>
     sameName(knownName || proposal.name || "", reference) &&
     containsIdentityReference(proof.evidence, reference);
+  const uniquelyNamed =
+    !!knownName &&
+    survey.members.filter(
+      (item) =>
+        typeof item.values.name === "string" &&
+        normalizeIdentityText(item.values.name) ===
+          normalizeIdentityText(knownName),
+    ).length === 1 &&
+    containsIdentityReference(proof.evidence, knownName);
+  const provenNamedRelation = uniquelyNamed
+    ? relationshipForNamedPerson(proof.evidence, knownName)
+    : null;
   const relationSupported = (reference: string) =>
-    !!knownRelation &&
-    relationshipsCompatible(reference, knownRelation) &&
-    evidenceSupportsRelationship(proof.evidence, reference) &&
-    relationCandidates(reference).length === 1;
+    (!!knownRelation &&
+      relationshipsCompatible(reference, knownRelation) &&
+      evidenceSupportsRelationship(proof.evidence, reference) &&
+      relationCandidates(reference).length === 1) ||
+    (!!provenNamedRelation &&
+      relationshipsCompatible(reference, provenNamedRelation) &&
+      evidenceSupportsRelationship(proof.evidence, reference));
   let supported = false;
   if (proof.kind === "introduction") {
     // Subsequent proposals may repeat a genuine introduction after its name was
@@ -2772,6 +3232,16 @@ function attributionProblem(
   if (!supported)
     return "The quoted person reference does not identify this member uniquely. Review the assignment.";
   if (!checkAnswer) return null;
+  const discourse = resolveSurveyEvidenceSubject(
+    survey,
+    segment,
+    proposal.evidence,
+  );
+  if (discourse.firstPerson && discourse.memberId) {
+    return discourse.memberId === member.id
+      ? null
+      : "This first-person answer belongs to the respondent, not the relative being discussed. Review the person assignment.";
+  }
   // A model-provided stable ID cannot overrule an explicit different person in
   // the answer. This catches short multilingual relationship reports as well.
   const namedOthers = survey.members.filter(
@@ -2793,6 +3263,7 @@ function attributionProblem(
       ),
   );
   const effectiveRelation =
+    provenNamedRelation ||
     knownRelation ||
     (proof.kind === "introduction"
       ? normalizeRelationship(proposal.relation ?? "")
@@ -2814,68 +3285,13 @@ function attributionProblem(
     !!effectiveRelation &&
     evidenceSupportsRelationship(proposal.evidence, effectiveRelation);
   if (
-    proof.kind === "context" ||
-    (!answerNamesTarget && !answerNamesRelation)
-  ) {
-    const answerIndex = segment.text.indexOf(proposal.evidence);
-    const prefix = normalizeIdentityText(
-      answerIndex >= 0
-        ? segment.text.slice(0, answerIndex + proposal.evidence.length)
-        : segment.text,
-    );
-    const references = survey.members
-      .map((item) => {
-        const name =
-          typeof item.values.name === "string"
-            ? item.values.name
-            : item.id === member.id
-              ? (proposal.name ?? "")
-              : "";
-        const relation = String(
-          item.values.relation ??
-            (item.id === member.id ? (proposal.relation ?? "") : ""),
-        );
-        const nameAt =
-          name && containsIdentityReference(prefix, name)
-            ? prefix.lastIndexOf(normalizeIdentityText(name))
-            : -1;
-        return {
-          id: item.id,
-          at: Math.max(
-            nameAt,
-            lastRelationshipReferenceIndex(prefix, relation),
-          ),
-        };
-      })
-      .filter((item) => item.at >= 0);
-    const latest = Math.max(-1, ...references.map((item) => item.at));
-    if (references.some((item) => item.at === latest && item.id !== member.id))
-      return "The nearest person mentioned before this answer is different or ambiguous. Confirm the person for this follow-up.";
-    // Crossing an intervening conversation about another person needs fresh
-    // identity evidence rather than a stale pronoun anchor.
-    if (proofSegment.index < segment.index && latest < 0) {
-      const intervening = survey.transcripts
-        .filter(
-          (item) =>
-            item.index > proofSegment.index && item.index < segment.index,
-        )
-        .sort((a, b) => b.index - a.index);
-      for (const prior of intervening) {
-        const others = survey.members.filter(
-          (item) =>
-            item.id !== member.id &&
-            ((typeof item.values.name === "string" &&
-              containsIdentityReference(prior.text, item.values.name)) ||
-              (String(item.values.relation ?? "") &&
-                evidenceSupportsRelationship(
-                  prior.text,
-                  String(item.values.relation),
-                ))),
-        );
-        if (others.length)
-          return "The conversation moved to another person after this reference. Confirm the member for the follow-up.";
-      }
-    }
-  }
+    (proof.kind === "context" ||
+      (!answerNamesTarget && !answerNamesRelation)) &&
+    discourse.memberId &&
+    discourse.memberId !== member.id
+  )
+    return "The nearest person mentioned before this answer is different or ambiguous. Confirm the person for this follow-up.";
+  if (discourse.ambiguous && !answerNamesTarget && !answerNamesRelation)
+    return "The quoted person reference does not identify this member uniquely. Review the assignment.";
   return null;
 }

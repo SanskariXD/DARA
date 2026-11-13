@@ -50,10 +50,13 @@ import {
   completeSurvey,
   createSurvey,
   createRainySurveyFromPrior,
+  createFollowUpSurvey,
+  isPregnancyFollowUpEligible,
+  confirmCarriedIdentities,
+  ensurePregnancyFollowUpSuggestion,
   editSurveyField,
   getMemberHealthStatus,
   isSurveyFieldVisible,
-  isPregnancyCareRelevant,
   PREGNANCY_FIELD_IDS,
   PREGNANCY_CHECKLIST_IDS,
   RAINY_FIELD_IDS,
@@ -69,6 +72,7 @@ import type {
   Survey,
   SurveyAnswerRecord,
   SurveyFieldDefinition,
+  SurveyFieldMeta,
   SurveyMember,
   SurveyReviewIssue,
   SurveyTranscript,
@@ -163,6 +167,25 @@ const fieldValueText = (
   return field && option
     ? translateOptionLabel(language, field, option)
     : valueText(value, language);
+};
+const actionableQuestion = (text: string) => {
+  if (
+    /attribut|speaker|unknown.*member|member.*unknown|who|different person|member context|identif/i.test(
+      text,
+    )
+  )
+    return "Who does this report belong to?";
+  if (
+    /more than one|conflict|correction|contradict|different answer/i.test(text)
+  )
+    return "Which answer should be kept?";
+  if (/too long|longer|characters/i.test(text))
+    return "Which details should be kept in this answer?";
+  if (/source|quote|evidence|transcript/i.test(text))
+    return "Does the conversation support this answer?";
+  if (/field|section|question/i.test(text))
+    return "Where should this report be recorded?";
+  return "What should be recorded from this part of the conversation?";
 };
 const iconInitials = (value: string) =>
   value
@@ -598,9 +621,8 @@ function DaraWorkspace({
     workspaceEpoch = useRef(0),
     completing = useRef(false),
     finishing = useRef(false),
-    draftCache = useRef(new Map<string, Survey>());
-  currentRef.current = survey;
-  if (survey) draftCache.current.set(survey.id, survey);
+    draftCache = useRef(new Map<string, Survey>()),
+    persistenceQueue = useRef(new Map<string, Promise<void>>());
   workspaceRef.current = { households, surveys };
   viewRef.current = view;
   stepRef.current = step;
@@ -609,7 +631,9 @@ function DaraWorkspace({
   const activeMember = survey?.members.find((m) => m.id === healthMemberId);
   const showPregnancyCare =
     !!activeMember &&
-    (isPregnancyCareRelevant(activeMember) ||
+    (activeMember.values.pregnancyStatus === "yes" ||
+      activeMember.values.maternalStage === "pregnant" ||
+      activeMember.values.maternalStage === "postnatal" ||
       [...PREGNANCY_FIELD_IDS].some(
         (id) => revealedFieldKey === `${activeMember.id}.${id}`,
       ));
@@ -621,37 +645,126 @@ function DaraWorkspace({
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [surveys, householdId],
   );
-  const update = useCallback(
-    (value: Survey | ((previous: Survey) => Survey)) => {
-      if (completing.current) return;
-      const previous = currentRef.current;
-      if (!previous && typeof value === "function") return;
-      try {
-        const next = typeof value === "function" ? value(previous!) : value;
-        if (next === previous) return;
-        draftCache.current.set(next.id, next);
-        currentRef.current = next;
-        setSurvey(next);
-        setReviewed(false);
-        setSaveStatus("saving");
-      } catch (e) {
-        setNotice(
-          e instanceof Error
-            ? e.message
-            : "This change could not be made. Please check the details.",
+  const pregnancyHistory = selectedSurveys.find((item) =>
+    isPregnancyFollowUpEligible(item),
+  );
+  const persistSnapshot = useCallback((next: Survey) => {
+    const epoch = workspaceEpoch.current;
+    const prior = persistenceQueue.current.get(next.id) ?? Promise.resolve();
+    const queued = prior
+      .catch(() => {})
+      .then(async () => {
+        if (workspaceEpoch.current !== epoch) return;
+        await saveRef.current(next);
+        savedRevision.current = `${next.id}:${next.revision}`;
+        if (
+          currentRef.current?.id === next.id &&
+          currentRef.current.revision === next.revision
+        )
+          setSaveStatus("saved");
+      })
+      .catch((reason) => {
+        if (
+          workspaceEpoch.current === epoch &&
+          currentRef.current?.id === next.id
+        )
+          setSaveStatus("error");
+        throw reason;
+      });
+    persistenceQueue.current.set(next.id, queued);
+    void queued
+      .finally(() => {
+        if (persistenceQueue.current.get(next.id) === queued)
+          persistenceQueue.current.delete(next.id);
+      })
+      .catch(() => {});
+    return queued;
+  }, []);
+  const publishDraft = useCallback((next: Survey) => {
+    draftCache.current.set(next.id, next);
+    if (currentRef.current?.id === next.id) {
+      currentRef.current = next;
+      setSurvey(next);
+      setReviewed(false);
+      setSaveStatus("saving");
+    }
+  }, []);
+  const commitSurveyMutation = useCallback(
+    async (
+      identity: { surveyId: string; generation?: string },
+      change: (current: Survey) => Survey,
+    ): Promise<Survey | null> => {
+      const epoch = workspaceEpoch.current;
+      const current =
+        currentRef.current?.id === identity.surveyId
+          ? currentRef.current
+          : draftCache.current.get(identity.surveyId);
+      if (
+        !current ||
+        current.workspaceGeneration !== identity.generation ||
+        current.status !== "draft" ||
+        completing.current
+      )
+        return null;
+      // Read, reduce and publish in one JS turn. Only persistence waits in a queue.
+      const next = ensurePregnancyFollowUpSuggestion(change(current));
+      if (next === current) return current;
+      if (
+        next.id !== current.id ||
+        next.workspaceGeneration !== current.workspaceGeneration ||
+        next.revision <= current.revision
+      )
+        throw new Error(
+          "This update could not be applied. Please try the change again.",
         );
-      }
+      publishDraft(next);
+      await persistSnapshot(next);
+      if (workspaceEpoch.current !== epoch) return null;
+      return currentRef.current?.id === next.id
+        ? currentRef.current
+        : (draftCache.current.get(next.id) ?? null);
     },
-    [],
+    [persistSnapshot, publishDraft],
   );
-  const commitToSurvey = useCallback(
-    async (next: Survey) => {
-      draftCache.current.set(next.id, next);
-      if (currentRef.current?.id === next.id) update(next);
-      else await saveRef.current(next);
+  const update = useCallback(
+    (change: Survey | ((previous: Survey) => Survey)) => {
+      const current = currentRef.current;
+      const epoch = workspaceEpoch.current;
+      if (!current || completing.current) return;
+      void commitSurveyMutation(
+        { surveyId: current.id, generation: current.workspaceGeneration },
+        typeof change === "function" ? change : () => change,
+      ).catch((reason) => {
+        if (workspaceEpoch.current !== epoch) return;
+        setNotice(
+          reason instanceof Error
+            ? reason.message
+            : "This change could not be saved. Please try again.",
+        );
+      });
     },
-    [update],
+    [commitSurveyMutation],
   );
+  function activateDraft(input: Survey) {
+    const known =
+      currentRef.current?.id === input.id
+        ? currentRef.current
+        : draftCache.current.get(input.id);
+    const next =
+      known &&
+      known.workspaceGeneration === input.workspaceGeneration &&
+      known.revision >= input.revision
+        ? known
+        : input;
+    currentRef.current = next;
+    draftCache.current.set(next.id, next);
+    setSurvey(next);
+    setReviewed(false);
+    if (next.status === "draft") {
+      setSaveStatus("saving");
+      void persistSnapshot(next).catch(() => {});
+    } else setSaveStatus("saved");
+  }
   // The recorder captures this callback when it starts. Its target ID never
   // follows a later household selection, while the draft values remain current.
   const recordingSurveyId = survey?.id;
@@ -674,9 +787,13 @@ function DaraWorkspace({
         language: detectedLanguage ?? "auto",
         source: "gnani",
       };
-      const withTranscript = addSurveyTranscript(current, segment);
+      let withTranscript: Survey | null = null;
       try {
-        await commitToSurvey(withTranscript);
+        withTranscript = await commitSurveyMutation(
+          { surveyId: current.id, generation: current.workspaceGeneration },
+          (latest) => addSurveyTranscript(latest, segment),
+        );
+        if (!withTranscript) return;
       } catch {
         if (workspaceEpoch.current !== epoch) return;
         // The original segment remains in the draft cache and workspace's
@@ -692,12 +809,9 @@ function DaraWorkspace({
       try {
         const envelope = await extractSurvey(withTranscript, segment);
         if (workspaceEpoch.current !== epoch) return;
-        const latest =
-          currentRef.current?.id === current.id
-            ? currentRef.current
-            : draftCache.current.get(current.id);
-        if (latest)
-          await commitToSurvey(
+        await commitSurveyMutation(
+          { surveyId: current.id, generation: current.workspaceGeneration },
+          (latest) =>
             applySurveyExtraction(
               latest,
               envelope,
@@ -705,7 +819,7 @@ function DaraWorkspace({
                 ? [...protectedFields.current]
                 : [],
             ),
-          );
+        );
       } catch (e) {
         if (workspaceEpoch.current !== epoch) return;
         setNotice(
@@ -718,7 +832,7 @@ function DaraWorkspace({
         setExtracting(pendingExtractions.current > 0);
       }
     },
-    [recordingSurveyId, commitToSurvey],
+    [recordingSurveyId, commitSurveyMutation],
   );
   const recorder = useRecorder({
     language: "auto",
@@ -734,16 +848,16 @@ function DaraWorkspace({
   const getProtectedKeys = useCallback(() => [...protectedFields.current], []);
   const reconciliation = useSurveyReconciliation({
     survey,
-    enabled:
-      view === "survey" &&
-      (step === "health" || step === "notes" || step === "review"),
+    enabled: view === "survey" && survey?.status === "draft",
     offline,
     getLatest: getLatestSurvey,
-    commit: commitToSurvey,
+    commit: commitSurveyMutation,
     getProtectedKeys,
   });
   const checkUnavailable = offline || reconciliation.status === "error";
-  const reviewIssues = issues;
+  const reviewIssues = issues.filter(
+    (issue) => !survey?.notes.some((note) => note.id === issue.id),
+  );
   const reviewReports = useMemo(() => {
     const groups = new Map<string, ReviewReport>();
     const add = (
@@ -788,7 +902,19 @@ function DaraWorkspace({
       .forEach((item) => add(item, "uncertainty", item.message));
     survey?.notes
       .filter((item) => !item.reviewed)
-      .forEach((item) => add(item, "note", item.text));
+      .forEach((item) => {
+        const related = [...groups.values()].find(
+          (group) =>
+            group.memberId === item.memberId &&
+            (group.evidence.includes(item.evidence) ||
+              group.id === `${item.memberId ?? "household"}:${item.segmentId}`),
+        );
+        if (related) {
+          related.noteIds.push(item.id);
+          if (!related.evidence.includes(item.evidence))
+            related.evidence.push(item.evidence);
+        }
+      });
     return [...groups.values()];
   }, [survey]);
   useEffect(() => {
@@ -838,7 +964,8 @@ function DaraWorkspace({
         const restored =
           currentRef.current?.id === id
             ? currentRef.current
-            : workspaceRef.current.surveys.find((s) => s.id === id);
+            : (draftCache.current.get(id) ??
+              workspaceRef.current.surveys.find((s) => s.id === id));
         if (restored) {
           currentRef.current = restored;
           setSurvey(restored);
@@ -859,25 +986,6 @@ function DaraWorkspace({
       window.removeEventListener("popstate", back);
     };
   }, []);
-  useEffect(() => {
-    if (!survey) return;
-    const key = `${survey.id}:${survey.revision}`;
-    if (savedRevision.current === key) {
-      setSaveStatus("saved");
-      return;
-    }
-    saveRef
-      .current(survey)
-      .then(() => {
-        savedRevision.current = key;
-        if (
-          currentRef.current?.id === survey.id &&
-          currentRef.current.revision === survey.revision
-        )
-          setSaveStatus("saved");
-      })
-      .catch(() => setSaveStatus("error"));
-  }, [survey]);
   useEffect(() => {
     if (recorder.status !== "recording") return;
     const timer = window.setInterval(() => setSeconds((v) => v + 1), 1000);
@@ -922,32 +1030,40 @@ function DaraWorkspace({
     if (completing.current || finishing.current) return;
     await recorderRef.current.stop();
     reconciliation.cancel();
+    const latestSnapshot = (item: Survey) => {
+      const cached =
+        currentRef.current?.id === item.id
+          ? currentRef.current
+          : draftCache.current.get(item.id);
+      return cached &&
+        cached.workspaceGeneration === item.workspaceGeneration &&
+        cached.revision >= item.revision
+        ? cached
+        : item;
+    };
     const priorSurvey = surveys
       .filter((item) => item.householdId === home.id)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      .map(latestSnapshot)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     const repeatSource = surveys.find((item) => item.id === repeatOf);
-    const selectedTemplate =
-      templateId ??
-      (repeatSource?.templateId === "pregnancy-follow-up"
-        ? "pregnancy-follow-up"
-        : repeatSource?.templateId === "rainy-season"
-          ? "rainy-season"
-          : "family-health");
+    const source = repeatSource ? latestSnapshot(repeatSource) : priorSurvey;
+    const selectedTemplate = templateId ?? "family-health";
     const next = existing
-      ? migrateDraftSurvey(existing)
-      : selectedTemplate === "rainy-season"
-        ? createRainySurveyFromPrior({
-            householdId: home.id,
-            priorSurvey: repeatSource ?? priorSurvey,
-            workspaceGeneration: generation,
-          })
-        : createSurvey({
-            householdId: home.id,
-            workspaceGeneration: generation,
-            ...(repeatOf ? { repeatOf } : {}),
-            templateId: selectedTemplate,
-          });
-    update(next);
+      ? ensurePregnancyFollowUpSuggestion(
+          migrateDraftSurvey(latestSnapshot(existing)),
+        )
+      : createFollowUpSurvey({
+          householdId: home.id,
+          priorSurvey: source,
+          kind:
+            selectedTemplate === "rainy-season"
+              ? "rainy"
+              : selectedTemplate === "pregnancy-follow-up"
+                ? "pregnancy"
+                : "family",
+          workspaceGeneration: generation,
+        });
+    activateDraft(next);
     setHouseholdId(home.id);
     setMemberId(next.members[0]?.id ?? "");
     setHealthMemberId(null);
@@ -955,9 +1071,8 @@ function DaraWorkspace({
     setStep(
       next.status === "completed"
         ? "review"
-        : next.templateId === "rainy-season" &&
-            next.members.some((member) => member.values.name)
-          ? "health"
+        : next.identityReviewRequired
+          ? "family"
           : "household",
     );
     setReviewed(false);
@@ -1001,8 +1116,24 @@ function DaraWorkspace({
         );
         return;
       }
+      await persistenceQueue.current.get(latest.id);
+      const readyToComplete = currentRef.current;
+      if (
+        !readyToComplete ||
+        readyToComplete.id !== latest.id ||
+        readyToComplete.workspaceGeneration !== latest.workspaceGeneration ||
+        workspaceEpoch.current !== epoch
+      )
+        return;
+      if (readyToComplete.revision !== latest.revision) {
+        setReviewed(false);
+        setNotice(
+          "The conversation check updated this visit. Review the changes before finishing.",
+        );
+        return;
+      }
       completing.current = true;
-      const completed = completeSurvey(latest);
+      const completed = completeSurvey(readyToComplete);
       await persistCompleted(completed);
       savedRevision.current = `${completed.id}:${completed.revision}`;
       currentRef.current = completed;
@@ -1042,12 +1173,9 @@ function DaraWorkspace({
     try {
       const envelope = await extractSurvey(current, segment);
       if (workspaceEpoch.current !== epoch) return;
-      const latest =
-        currentRef.current?.id === current.id
-          ? currentRef.current
-          : draftCache.current.get(current.id);
-      if (latest)
-        await commitToSurvey(
+      await commitSurveyMutation(
+        { surveyId: current.id, generation: current.workspaceGeneration },
+        (latest) =>
           applySurveyExtraction(
             latest,
             envelope,
@@ -1055,7 +1183,7 @@ function DaraWorkspace({
               ? [...protectedFields.current]
               : [],
           ),
-        );
+      );
     } catch (e) {
       if (workspaceEpoch.current !== epoch) return;
       setNotice(
@@ -1114,6 +1242,18 @@ function DaraWorkspace({
     }
   }
   function editIssue(issue: SurveyReviewIssue) {
+    if (issue.id === "carried-identities") {
+      setStep("family");
+      setReviewed(false);
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() =>
+          document
+            .getElementById("answer-household-identityReviewRequired")
+            ?.focus(),
+        ),
+      );
+      return;
+    }
     const definition = survey?.fields.find((f) => f.id === issue.fieldId);
     setRevealedFieldKey(`${issue.memberId ?? "household"}.${issue.fieldId}`);
     if (issue.memberId) {
@@ -1151,6 +1291,15 @@ function DaraWorkspace({
       for (const id of group.noteIds) next = reviewSurveyNote(next, id);
       return next;
     });
+  }
+  function acknowledgeReview(checked: boolean) {
+    if (checked)
+      update((current) =>
+        current.notes
+          .filter((note) => !note.reviewed)
+          .reduce((next, note) => reviewSurveyNote(next, note.id), current),
+      );
+    setReviewed(checked);
   }
   function editReport(group: ReviewReport) {
     const field = survey?.fields.find((definition) =>
@@ -1687,23 +1836,18 @@ function DaraWorkspace({
                   >
                     {selectedSurveys.some((s) => s.status === "draft")
                       ? t("Continue visit")
-                      : t("Start visit")}
+                      : t("New survey")}
                     <ArrowRight size={17} />
                   </Button>
-                  <Button
-                    kind="secondary"
-                    className="full-width"
-                    onClick={() =>
-                      openSurvey(
-                        household,
-                        undefined,
-                        undefined,
-                        "pregnancy-follow-up",
-                      )
-                    }
-                  >
-                    {t("Start pregnancy survey")}
-                  </Button>
+                  {selectedSurveys.some((item) => item.status === "draft") && (
+                    <Button
+                      kind="secondary"
+                      className="full-width"
+                      onClick={() => openSurvey(household)}
+                    >
+                      {t("New survey")}
+                    </Button>
+                  )}
                   <Button
                     kind="secondary"
                     className="full-width"
@@ -1716,9 +1860,9 @@ function DaraWorkspace({
                       )
                     }
                   >
-                    {t("Start rainy-season visit")}
+                    {t("Monsoon visit")}
                   </Button>
-                  {selectedSurveys.some((s) => s.status === "completed") && (
+                  {pregnancyHistory && (
                     <Button
                       kind="secondary"
                       className="full-width"
@@ -1726,17 +1870,17 @@ function DaraWorkspace({
                         openSurvey(
                           household,
                           undefined,
-                          selectedSurveys.find((s) => s.status === "completed")!
-                            .id,
+                          pregnancyHistory.id,
+                          "pregnancy-follow-up",
                         )
                       }
                     >
-                      {t("Start repeat visit")}
+                      {t("Pregnancy follow-up")}
                     </Button>
                   )}
                   <small>
                     {t(
-                      "Repeat visits start with blank answers and keep earlier records unchanged.",
+                      "New visits reuse known members and contact details. Confirm the household, then record fresh health answers.",
                     )}
                   </small>
                 </aside>
@@ -1866,6 +2010,32 @@ function DaraWorkspace({
                           )}
                         </p>
                       </div>
+                      {survey.identityReviewRequired && (
+                        <div className="identity-review-card">
+                          <h3>{t("Confirm household members")}</h3>
+                          <p>
+                            {t(
+                              "These details are from the previous visit. Check who still lives here, update any changes, and add or remove people as needed.",
+                            )}
+                          </p>
+                          <label>
+                            <input
+                              id="answer-household-identityReviewRequired"
+                              type="checkbox"
+                              checked={false}
+                              disabled={busy}
+                              onChange={() =>
+                                update((current) =>
+                                  confirmCarriedIdentities(current),
+                                )
+                              }
+                            />
+                            <span>
+                              {t("I confirmed who lives in this household.")}
+                            </span>
+                          </label>
+                        </div>
+                      )}
                       {survey.members.length === 0 ? (
                         <div className="surface">
                           <Empty
@@ -2055,6 +2225,14 @@ function DaraWorkspace({
                                         )}
                                       </p>
                                     </div>
+                                    {survey.templateId ===
+                                      "pregnancy-follow-up" && (
+                                      <p className="care-context-note">
+                                        {t(
+                                          "Previous care details are shown for reference. Review and update them for this visit.",
+                                        )}
+                                      </p>
+                                    )}
                                     <div className="survey-fields">
                                       {survey.fields
                                         .filter(
@@ -2322,13 +2500,18 @@ function DaraWorkspace({
                         </div>
                       )}
                       {reviewIssues.filter(
-                        (i) => i.kind !== "conflict" && i.kind !== "uncertain",
+                        (i) =>
+                          i.kind !== "conflict" &&
+                          (i.kind !== "uncertain" ||
+                            i.id === "carried-identities"),
                       ).length > 0 && (
                         <div className="review-issues">
                           {reviewIssues
                             .filter(
                               (i) =>
-                                i.kind !== "conflict" && i.kind !== "uncertain",
+                                i.kind !== "conflict" &&
+                                (i.kind !== "uncertain" ||
+                                  i.id === "carried-identities"),
                             )
                             .map((issue) => (
                               <div key={issue.id}>
@@ -2482,12 +2665,12 @@ function DaraWorkspace({
                                 <span>{t("Needs review")}</span>
                               </header>
                               <ul>
-                                {group.messages.map((text, index) => (
-                                  <li key={index}>
-                                    {group.controlledMessages.includes(text)
-                                      ? message(text)
-                                      : text}
-                                  </li>
+                                {[
+                                  ...new Set(
+                                    group.messages.map(actionableQuestion),
+                                  ),
+                                ].map((question, index) => (
+                                  <li key={index}>{t(question)}</li>
                                 ))}
                               </ul>
                               <details className="report-source">
@@ -2616,7 +2799,9 @@ function DaraWorkspace({
                               type="checkbox"
                               checked={reviewed}
                               disabled={busy}
-                              onChange={(e) => setReviewed(e.target.checked)}
+                              onChange={(e) =>
+                                acknowledgeReview(e.target.checked)
+                              }
                             />
                             <span>{t("I have reviewed this visit.")}</span>
                           </label>
@@ -2833,7 +3018,7 @@ function DaraWorkspace({
                 className="repeat-link"
                 onClick={() => openSurvey(household, undefined, survey.id)}
               >
-                {t("Start a blank repeat visit")}
+                {t("Start a repeat visit")}
                 <ArrowRight size={16} />
               </button>
             </div>
@@ -3492,11 +3677,13 @@ function CareChecklist({
             </label>
             <div className="checklist-meta">
               <span>
-                {meta?.manuallyProtected
-                  ? t("Edited by you")
-                  : meta?.source === "extracted"
-                    ? t("From conversation")
-                    : ""}
+                {meta?.source === "migration" && meta.carriedFromSurveyId
+                  ? t("Previous visit")
+                  : meta?.manuallyProtected
+                    ? t("Edited by you")
+                    : meta?.source === "extracted"
+                      ? t("From conversation")
+                      : ""}
               </span>
               {meta?.evidence && (
                 <details>
@@ -3602,7 +3789,7 @@ function AnswerField({
   field: SurveyFieldDefinition;
   memberId: string | null;
   value: SurveyValue | undefined;
-  meta?: { source: string; manuallyProtected: boolean; evidence?: string };
+  meta?: SurveyFieldMeta;
   disabled: boolean;
   needsReview: boolean;
   issue?: string;
@@ -3690,6 +3877,10 @@ function AnswerField({
           <span>{message(issue, field)}</span>
         ) : needsReview ? (
           <span>{t("Needs review")}</span>
+        ) : meta?.source === "migration" && meta.carriedFromSurveyId ? (
+          <span>{t("Previous visit")}</span>
+        ) : meta?.suggested && !meta.manuallyProtected ? (
+          <span>{t("Suggested date")}</span>
         ) : meta?.manuallyProtected ? (
           <span>{t("Edited by you")}</span>
         ) : meta?.source === "extracted" ? (
@@ -3702,11 +3893,22 @@ function AnswerField({
         )}
       </div>
       <div className="answer-source">
-        {meta?.evidence && (
+        {meta?.suggested && !meta.manuallyProtected ? (
           <details>
-            <summary>{t("View source")}</summary>
-            <blockquote>“{meta.evidence}”</blockquote>
+            <summary>{t("About this suggestion")}</summary>
+            <blockquote>
+              {t(
+                "The suggested next visit is 14 days after this visit. You can change the date.",
+              )}
+            </blockquote>
           </details>
+        ) : (
+          meta?.evidence && (
+            <details>
+              <summary>{t("View source")}</summary>
+              <blockquote>“{meta.evidence}”</blockquote>
+            </details>
+          )
         )}
       </div>
     </div>
