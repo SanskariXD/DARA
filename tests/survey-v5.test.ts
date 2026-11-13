@@ -1,3 +1,4 @@
+import { decodeProviderWire } from "../src/lib/server/live-providers";
 import { describe, expect, it } from "vitest";
 import {
   addSurveyTranscript,
@@ -119,6 +120,122 @@ function machine(
   };
 }
 describe("durable respondent and machine-only repair", () => {
+  it("applies the exact browser sequence when a second Kannada speaker introduces a new name", () => {
+    let s = createSurvey({ householdId: "home" }, NOW, "bilingual");
+    const sources = [
+      {
+        name: "Extracted Fixture Person",
+        intro: "My name is Extracted Fixture Person.",
+        health: "I have a headache and I have BP.",
+        note: "The household prefers morning visits.",
+        prefix: "There are three family members. ",
+        language: "en" as const,
+      },
+      {
+        name: "ಪರೀಕ್ಷಾ ರವಿ",
+        intro: "ನನ್ನ ಹೆಸರು ಪರೀಕ್ಷಾ ರವಿ.",
+        health: "ನನಗೆ ಎರಡು ದಿನದಿಂದ ಕೆಮ್ಮು ಇದೆ.",
+        note: "ನಾವು ನಲ್ಲಿಯಿಂದ ಕುಡಿಯುವ ನೀರು ತರುತ್ತೇವೆ.",
+        prefix: "",
+        language: "kn" as const,
+      },
+    ];
+    for (const [index, source] of sources.entries()) {
+      const segment = {
+        id: `browser-${index}`,
+        index,
+        text: `${source.prefix}${source.intro} ${source.health} ${source.note}`,
+        timestamp: NOW,
+        source: "gnani" as const,
+        language: source.language,
+      };
+      s = addSurveyTranscript(s, segment, NOW);
+      const result = decodeProviderWire(
+        {
+          familySize: index === 0 ? 3 : null,
+          familySizeEvidence:
+            index === 0 ? "There are three family members." : null,
+          familySizeCorrection: null,
+          members: [
+            {
+              memberId: null,
+              slot: index + 1,
+              evidence: segment.text,
+              uncertain: false,
+              attribution: {
+                kind: "name",
+                reference: source.name,
+                evidence: source.intro,
+                segmentId: segment.id,
+              },
+              corrections: [],
+              fields: [
+                { fieldId: "name", value: source.name, evidence: source.intro },
+                {
+                  fieldId: "healthStatus",
+                  value: "concerns",
+                  evidence: source.health,
+                },
+                {
+                  fieldId: "healthHistory",
+                  value: source.health,
+                  evidence: source.health,
+                },
+                ...(index === 0
+                  ? [
+                      {
+                        fieldId: "hypertension",
+                        value: "yes",
+                        evidence: source.health,
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ],
+          householdFields: [
+            {
+              fieldId: "householdNotes",
+              value: source.note,
+              evidence: source.note,
+            },
+          ],
+          notes: [],
+          uncertainties: [],
+        },
+        s,
+        segment,
+      );
+      s = applySurveyExtraction(s, {
+        surveyId: s.id,
+        segmentId: segment.id,
+        segmentIndex: index,
+        baseRevision: s.revision,
+        result,
+      });
+    }
+    expect(s.members[0].values).toMatchObject({
+      name: sources[0].name,
+      healthHistory: sources[0].health,
+      hypertension: "yes",
+    });
+    expect(s.members[1].values).toMatchObject({
+      name: sources[1].name,
+      healthHistory: sources[1].health,
+      healthStatus: "concerns",
+    });
+    expect(s.members[2].values).toEqual({});
+    expect(s.uncertainties).toEqual([]);
+    expect(s.household.values.householdNotes).toBe(
+      `${sources[0].note}\n${sources[1].note}`,
+    );
+    expect(getSurveyDiscourseContext(s).respondentMemberId).toBe(
+      s.members[1].id,
+    );
+    expect(getSurveyDiscourseContext(s).discussedMemberId).toBe(
+      s.members[1].id,
+    );
+  });
   it("keeps Ajay as respondent while wife remains the discussed subject", () => {
     const context = getSurveyDiscourseContext(start());
     expect(context.respondentMemberId).toBe(start().members[0].id);

@@ -3232,8 +3232,22 @@ function attributionProblem(
   if (!supported)
     return "The quoted person reference does not identify this member uniquely. Review the assignment.";
   if (!checkAnswer) return null;
+  // A source-validated new self-introduction must be visible to discourse
+  // resolution before its first name field is committed. Existing identities
+  // cannot be replaced by this temporary lookup view.
+  const discourseSurvey =
+    !knownName && proposal.name && nameSupported(proof.reference)
+      ? {
+          ...survey,
+          members: survey.members.map((item) =>
+            item.id === member.id
+              ? { ...item, values: { ...item.values, name: proposal.name! } }
+              : item,
+          ),
+        }
+      : survey;
   const discourse = resolveSurveyEvidenceSubject(
-    survey,
+    discourseSurvey,
     segment,
     proposal.evidence,
   );

@@ -94,6 +94,7 @@ export function getSurveyDiscourseContext(
       );
       const intro = selfNames.length ? selfNames : namedSpeaker;
       if (intro.length === 1) {
+        const switchedSpeaker = respondentMemberId !== intro[0].id;
         respondentMemberId = intro[0].id;
         respondentAnchor = {
           segmentId: segment.id,
@@ -101,7 +102,8 @@ export function getSurveyDiscourseContext(
           reference: String(intro[0].values.name),
         };
         ambiguous = false;
-        if (!discussedMemberId) discussedMemberId = respondentMemberId;
+        if (switchedSpeaker || !discussedMemberId)
+          discussedMemberId = respondentMemberId;
       } else if (intro.length > 1) {
         respondentMemberId = null;
         respondentAnchor = null;
