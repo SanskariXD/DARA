@@ -112,20 +112,28 @@ export async function POST(request: Request) {
         (name) => name !== "audio_file" && name !== "language",
       ) ||
       form.getAll("audio_file").length !== 1 ||
-      form.getAll("language").length !== 1
+      form.getAll("language").length > 1
     )
       throw new HttpError(400, "The recording upload has unexpected fields.");
     const audio = form.get("audio_file"),
-      language = form.get("language");
+      language = form.get("language") ?? "auto";
     if (
       !(audio instanceof Blob) ||
       !["audio/wav", "audio/x-wav", "audio/wave"].includes(audio.type)
     )
       throw new HttpError(415, "This connection accepts PCM WAV recordings.");
-    if (language !== "en" && language !== "kn" && language !== "hi")
+    if (
+      language !== "auto" &&
+      language !== "en" &&
+      language !== "kn" &&
+      language !== "hi" &&
+      language !== "te" &&
+      language !== "ta" &&
+      language !== "ml"
+    )
       throw new HttpError(
         400,
-        "Choose English, Kannada, or Hindi for this recording.",
+        "Use automatic detection or a supported speech language for this recording.",
       );
     validateWav(new Uint8Array(await audio.arrayBuffer()));
     const result = await transcribeWav(audio, language);

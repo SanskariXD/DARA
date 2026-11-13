@@ -116,9 +116,11 @@ export function encodeWav({ frames, rate }: AudioChunk): Blob {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
+export type SpeechLanguage = "auto" | "en" | "kn" | "hi" | "te" | "ta" | "ml";
 export interface TextChunk {
   text: string;
   separator: string;
+  language?: SpeechLanguage;
 }
 /** Coalesces pending turns while preserving text verbatim and explicit newlines. */
 export function takeTextBatch(
@@ -140,8 +142,10 @@ export function takeTextBatch(
 }
 
 type Options = {
-  transcribe: (audio: AudioChunk) => Promise<string>;
-  onTranscript: (text: string) => Promise<void>;
+  transcribe: (
+    audio: AudioChunk,
+  ) => Promise<string | { text: string; language: SpeechLanguage }>;
+  onTranscript: (text: string, language?: SpeechLanguage) => Promise<void>;
   onError: (error: unknown, stage: "speech" | "extraction") => void;
   onBackpressure: () => void;
   onChange?: () => void;
@@ -209,7 +213,8 @@ export class RecorderPipeline {
   }
   cancel() {
     this.canceled = true;
-    // Cancellation is only used on unmount, never to handle queue pressure.
+    // Only unmount or an explicit confirmed reset cancels captured work.
+    // Queue pressure and normal stop preserve it for retry.
     this.audio = [];
     this.text = [];
   }
@@ -236,7 +241,11 @@ export class RecorderPipeline {
     this.audioTask = (async () => {
       await Promise.resolve();
       try {
-        const transcript = await this.options.transcribe(batch);
+        const response = await this.options.transcribe(batch);
+        const transcript =
+          typeof response === "string" ? response : response.text;
+        const language =
+          typeof response === "string" ? "auto" : response.language;
         if (this.canceled) return;
         if (transcript.trim()) {
           // Provider responses are limited to 8,000 chars. Retain a longer
@@ -249,6 +258,7 @@ export class RecorderPipeline {
             this.text.push({
               text: transcript.slice(offset, offset + MAX_TEXT_BATCH_CHARS),
               separator: offset ? "" : "\n",
+              language,
             });
           }
           this.pumpText();
@@ -276,7 +286,13 @@ export class RecorderPipeline {
     this.textTask = (async () => {
       await Promise.resolve();
       try {
-        await this.options.onTranscript(batch.text);
+        const languages = new Set(
+          batch.chunks.map((chunk) => chunk.language ?? "auto"),
+        );
+        await this.options.onTranscript(
+          batch.text,
+          languages.size === 1 ? [...languages][0] : "auto",
+        );
       } catch (error) {
         if (!this.canceled) {
           this.text.unshift(...batch.chunks);

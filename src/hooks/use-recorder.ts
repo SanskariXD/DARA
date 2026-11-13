@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { SpeechLanguage } from "@/lib/recorder-pipeline";
 import {
   createFlushAcknowledgement,
   encodeWav,
@@ -11,8 +12,8 @@ export type RecorderStatus =
 const INCOMPLETE_FLUSH =
   "The microphone did not confirm its final audio buffer. Received speech was kept, but the last spoken words may be incomplete. Check the last answer before continuing.";
 type Props = {
-  language: "en" | "kn" | "hi";
-  onTranscript: (text: string) => Promise<void>;
+  language?: SpeechLanguage;
+  onTranscript: (text: string, language?: SpeechLanguage) => Promise<void>;
 };
 type Runtime = {
   ctx: AudioContext;
@@ -22,7 +23,7 @@ type Runtime = {
   mute: GainNode;
 };
 
-export function useRecorder({ language, onTranscript }: Props) {
+export function useRecorder({ language = "auto", onTranscript }: Props) {
   const [status, setStatus] = useState<RecorderStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -191,7 +192,11 @@ export function useRecorder({ language, onTranscript }: Props) {
             body: data,
             signal: AbortSignal.any([abort.signal, AbortSignal.timeout(45000)]),
           });
-          let result: { text?: string; error?: { message?: string } };
+          let result: {
+            text?: string;
+            language?: string;
+            error?: { message?: string };
+          };
           try {
             result = await response.json();
           } catch {
@@ -205,10 +210,16 @@ export function useRecorder({ language, onTranscript }: Props) {
             throw new Error(
               "The speech service returned an incomplete transcript. Captured audio can be retried.",
             );
-          return result.text;
+          const detected = ["en", "kn", "hi", "te", "ta", "ml"].includes(
+            result.language ?? "",
+          )
+            ? (result.language as SpeechLanguage)
+            : "auto";
+          return { text: result.text, language: detected };
         },
-        onTranscript: async (text) => {
-          if (id === session.current && mounted.current) await callback(text);
+        onTranscript: async (text, detected) => {
+          if (id === session.current && mounted.current)
+            await callback(text, detected);
         },
         onError: (reason, stage) => {
           if (id !== session.current || !mounted.current) return;
@@ -305,7 +316,7 @@ export function useRecorder({ language, onTranscript }: Props) {
       };
       await ctx.resume();
       if (!mounted.current || attempt !== startAttempt.current) {
-        release();
+        if (runtime.current === current) release();
         return;
       }
       setStatus(
@@ -326,7 +337,7 @@ export function useRecorder({ language, onTranscript }: Props) {
           : "The microphone could not be started. Check browser permissions and try again.",
       );
     } finally {
-      starting.current = false;
+      if (attempt === startAttempt.current) starting.current = false;
     }
   }, [flush, release]);
 
@@ -407,18 +418,20 @@ export function useRecorder({ language, onTranscript }: Props) {
         setStatus("paused");
       }
     } finally {
-      resuming.current = false;
+      if (id === session.current) resuming.current = false;
     }
   }, []);
 
   const stop = useCallback((): Promise<void> => {
     if (stopping.current) return stopping.current;
     startAttempt.current++;
+    starting.current = false;
     captureAttempt.current++;
     const id = session.current;
     const operation = (async () => {
       const current = runtime.current;
       if (current) await pauseCapture(current);
+      if (id !== session.current) return;
       release();
       if (mounted.current) setStatus("processing");
       const drained = (await pipeline.current?.drain()) ?? true;
@@ -434,6 +447,33 @@ export function useRecorder({ language, onTranscript }: Props) {
     });
     return operation;
   }, [pauseCapture, release]);
+
+  // Only an explicit confirmed reset discards captured work. Normal stop/pause
+  // keeps failed queues available for retry.
+  const discard = useCallback(() => {
+    startAttempt.current++;
+    captureAttempt.current++;
+    session.current++;
+    sessionAbort.current?.abort();
+    sessionAbort.current = null;
+    pipeline.current?.cancel();
+    pipeline.current = null;
+    release();
+    frames.current = [];
+    samples.current = 0;
+    silence.current = 0;
+    voiced.current = false;
+    flushIncomplete.current = false;
+    starting.current = false;
+    resuming.current = false;
+    stopping.current = null;
+    pausing.current = null;
+    if (mounted.current) {
+      setStatus("idle");
+      setError(null);
+      setElapsed(0);
+    }
+  }, [release]);
 
   useEffect(() => {
     mounted.current = true;
@@ -461,6 +501,7 @@ export function useRecorder({ language, onTranscript }: Props) {
     pause,
     resume,
     stop,
+    discard,
     // Dismissing a message must never change queue ownership or claim idle while
     // an old survey's transcription/extraction is still processing.
     clearError: () => {

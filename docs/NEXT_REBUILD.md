@@ -1,6 +1,6 @@
 # Next rebuild: template-driven family health survey
 
-This specification is implemented in DARA 0.2 alongside live speech/extraction and the reference-led interface redesign.
+This original specification was implemented in DARA 0.2. DARA 0.3 refines health, notes, attribution, background review and languages; see [CONTRACT.md](CONTRACT.md) and [PLAN.md](../PLAN.md) for the current behavior.
 
 ## Worker flow
 

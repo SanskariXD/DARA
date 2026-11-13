@@ -27,11 +27,7 @@ export async function POST(request: Request) {
     const stored = survey.transcripts.find(
       (item) => item.id === segment.id && item.index === segment.index,
     );
-    if (
-      !stored ||
-      stored.text !== segment.text ||
-      stored.language !== segment.language
-    )
+    if (!stored || JSON.stringify(stored) !== JSON.stringify(segment))
       throw new HttpError(400, "The passage does not match this survey.");
     if (survey.processedSegmentIds.includes(segment.id))
       throw new HttpError(409, "This passage has already been applied.");

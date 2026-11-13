@@ -37,6 +37,7 @@ const survey = () =>
 const wire = () => ({
   familySize: 3,
   familySizeEvidence: "There are three people.",
+  familySizeCorrection: null,
   members: [
     {
       memberId: null,
@@ -47,6 +48,13 @@ const wire = () => ({
       ],
       evidence: segment.text,
       uncertain: false,
+      attribution: {
+        kind: "introduction",
+        reference: "Anjali",
+        evidence: "My name is Anjali.",
+        segmentId: segment.id,
+      },
+      corrections: [],
     },
   ],
   householdFields: [],
@@ -406,7 +414,11 @@ describe("WAV transcription boundary", () => {
     );
     const response = await transcribe(audioRequest());
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ text: "Hello.", language: "kn" });
+    expect(await response.json()).toEqual({
+      text: "Hello.",
+      language: "kn",
+      detectedLanguageCode: "kn-IN",
+    });
     const [url, init] = vi.mocked(fetch).mock.calls[0];
     expect(url).toBe("https://api.vachana.ai/stt/v3");
     expect(new Headers(init?.headers).get("X-API-Key-ID")).toBe(

@@ -1,39 +1,36 @@
-# DARA 0.2 verification
+# DARA 0.3 verification
 
-Checked 13 November 2026. All test records and provider smoke inputs are synthetic.
+Checked 13 November 2026. All test records and provider probes are fictional.
 
 ## Scope
 
-- Versioned blank surveys, automatic member creation, explicit identity attribution, custom questions, notes, evidence, active/manual field protection, safe count reductions, review and immutable completion.
-- IndexedDB persistence, ordered revisions, stale writes, recovery export, and completed history. The new workspace starts empty and does not load the old synthetic fixture database.
-- Signed private workspace sessions, same-origin requests, bounded input, exact WAV validation, provider schema/evidence validation, sanitized failures and server-only secrets.
-- Recorder segmentation, overlapping ordered speech/extraction queues, batch caps, pressure-triggered pauses, retries, stop/drain and cancellation.
-- Browser journeys: manual completion and blank repeat; phone/tablet layouts; reload/offline; delayed extraction/manual protection/count reduction; microphone denial.
+- Five canonical examples (two pregnancy visits and three general visits), non-destructive seeding, draft migration, immutable completed history, confirmed reset and stale-write rejection across tabs.
+- Relationship options and guarded sex defaults; compact health states; one reported symptoms/history field, conditional concern details, reported hypertension and pregnancy; one household notes area.
+- Exact transcript evidence and person attribution for each field; explicit corrections; manually cleared and focused answer protection; no diagnosis, invented measurements or healthy defaults from silence.
+- Automatic speech language detection independent of the six locally bundled interface languages; original names, transcripts, custom questions and free-text answers are never translated by the UI dictionary.
+- Full-history reconciliation in bounded, newest-first batches. Original segment IDs/evidence are retained, existing answers are protected and manual review is required if the check cannot finish.
+- Signed workspace sessions, server-only provider credentials, request limits and sanitised failures. Reconciliation is protected by the same private session as live extraction.
 
-## Findings resolved during independent review
+## Findings resolved during review
 
 | Finding | Resolution |
 | --- | --- |
-| Late extraction could apply a slot to a changed member layout. | Stable member IDs, revision/topology guard, and review of uncertain slot-only proposals. |
-| Different name proposed for an already named slot. | Preserve the existing member and put the proposed attribution into review. |
-| Recording navigation could attach late text to the wrong survey. | Bind recorder callback to its original survey; drain before navigation and keep the latest per-survey snapshot. |
-| Completion could race pending recording. | Drain speech/extraction before review completion; block edits/navigation during completion. |
-| Repeated start, pause/resume and late resume failures could corrupt capture state. | Explicit startup/resume locks, capture generations and runtime checks. |
-| Slow providers could cause an unbounded processing backlog. | Separate ordered stages overlap STT/extraction, coalesce pending work within caps and pause capture while preserving queued speech. |
-| Transcript storage failure could cause retry duplication. | Retain the original cached segment, resolve ingestion once, and offer an explicit recovery export before reload. |
-| Focused field moved 236px while a response arrived. | Trace showed smooth focus scrolling rather than a changing field height; workspace scrolling is now immediate and strict browser assertions pass. |
-| Model schema accepted locally but rejected by the live provider. | Compact wire schema verified with the real Gemini API; converted and validated against the full application contract. |
+| Broad model quotations could contain different people's answers. | Validate each field's precise source quotation against the intended person's explicit reference. |
+| Valid live output could contain a repeated count without evidence or concatenated quotations. | Discard only unsupported unchanged counts; recover an original enclosing passage only from individually verified unique field quotations. Per-field attribution remains enforced. |
+| Saying someone has no fever could replace an existing overall concern. | Prompt distinguishes a specific negative from an explicit overall no-concerns report; conflicting answers remain reviewable. |
+| Old conversation backfill could undo newer edits. | Fill only missing, unprotected values against the latest survey, original segment index and revision. |
+| Custom questions or changed member identities could invalidate a completed conversation check. | Fingerprints include the complete field schema and roster; changes during a pass leave the check incomplete and trigger a fresh pass. |
+| Delayed provider responses or old tabs could recreate cleared records. | Abort active checks, invalidate UI work and enforce an atomic workspace-generation check at storage writes. |
+| Missing prompts were hidden during checking but the heading claimed completion. | Pending-check wording stays visible until the check completes or the worker explicitly reviews manually. |
+| Generated and migrated notes appeared in multiple places. | Consolidate the editable content in household notes; preserve original source/history internally. |
+| Indic text can exceed byte limits despite meeting the character limit. | Separate a 256,000-byte request limit from the 16,000 target-character cap, preserve exact passages and split larger batches. |
 
-## Provider evidence
+## Verification evidence
 
-See [PROVIDERS.md](PROVIDERS.md) for official contracts and exact synthetic checks. Real spoken audio passed through Gnani, Gemini and the survey engine to create three people with matching ages and relationships. One name spelling differed in transcription and was retained for review. This establishes connectivity and one example, not multilingual field accuracy or latency percentiles.
+Final test, browser and deployment identities are recorded in [RELEASE.md](RELEASE.md). Live synthetic provider outcomes and source documentation are in [PROVIDERS.md](PROVIDERS.md). Deterministic browser tests mock paid providers; only separately documented provider probes make real calls.
 
-## Release checks
+## Remaining validation
 
-Final verification passed: 135 tests across eight files, TypeScript, production build, and all five Chromium journeys in [run 43384196699](https://github.com/SanskariXD/DARA/actions/runs/43384196699). Exact production identity and hosted endpoint checks are recorded in [RELEASE.md](RELEASE.md). The production dependency audit currently reports zero known vulnerabilities.
+Records remain in this browser/device's IndexedDB with JSON export, not a shared cloud database. The private access code protects paid APIs; it is not individual worker identity or encryption of local records. No claim of official questionnaire approval or clinical accuracy is made. Real human speech in noisy environments, long sessions on lower-end phones, and review of the five translated interfaces by native-speaking ASHA workers remain field-validation work. Synthetic probes establish specific working cases, not an accuracy percentage.
 
-## Limits
-
-This is a working private workspace with real provider calls and device-local records. The shared access code is not individual worker identity or household authorization; it does not encrypt IndexedDB or JSON exports. There is no shared cloud backup. The interface is English, with English/Kannada/Hindi speech-language choices. Field validation with human speech, noisy environments, long sessions and low-end devices remains necessary. No diagnosis, official questionnaire approval, or clinical accuracy claim is made.
-
-The earlier 0.1 release and its test evidence remain available in repository history at commit `4318178e6c751b162ea7050fdf6ea5410662efee`.
+Earlier release evidence remains in Git history.

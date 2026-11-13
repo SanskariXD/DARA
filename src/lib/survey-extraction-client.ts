@@ -1,20 +1,11 @@
-import { z } from "zod";
 import {
-  surveyExtractionSchema,
+  surveyExtractionEnvelopeSchema,
   type Survey,
   type SurveyTranscript,
   type SurveyExtractionEnvelope,
 } from "./survey";
 
-const envelopeSchema = z
-  .object({
-    surveyId: z.string(),
-    segmentId: z.string(),
-    segmentIndex: z.number().int(),
-    baseRevision: z.number().int(),
-    result: surveyExtractionSchema,
-  })
-  .strict();
+const envelopeSchema = surveyExtractionEnvelopeSchema;
 
 export async function extractSurvey(
   survey: Survey,

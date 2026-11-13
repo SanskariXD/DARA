@@ -117,6 +117,51 @@ describe("bounded audio/text batching", () => {
 });
 
 describe("two-stage recorder pipeline", () => {
+  it("keeps the detected speech language independent of the interface language", async () => {
+    const received: unknown[] = [];
+    const pipeline = new RecorderPipeline({
+      transcribe: async () => ({ text: "ಅಪ್ಪನಿಗೆ ಬಿಪಿ ಇದೆ", language: "kn" }),
+      onTranscript: async (text, language) => {
+        received.push({ text, language });
+      },
+      onError: () => {},
+      onBackpressure: () => {},
+    });
+    enqueue(pipeline);
+    expect(await pipeline.drain()).toBe(true);
+    expect(received).toEqual([{ text: "ಅಪ್ಪನಿಗೆ ಬಿಪಿ ಇದೆ", language: "kn" }]);
+  });
+  it("marks coalesced passages from different languages as auto without changing their text", async () => {
+    const hold = deferred<void>();
+    const received: unknown[] = [];
+    const responses = [
+      { text: "Start", language: "en" as const },
+      { text: "पिताजी को बीपी है", language: "hi" as const },
+      { text: "ಅಮ್ಮ ಆರೋಗ್ಯವಾಗಿದ್ದಾರೆ", language: "kn" as const },
+    ];
+    let count = 0;
+    const pipeline = new RecorderPipeline({
+      transcribe: async () => responses[count++],
+      onTranscript: async (text, language) => {
+        received.push({ text, language });
+        if (received.length === 1) await hold.promise;
+      },
+      onError: () => {},
+      onBackpressure: () => {},
+    });
+    enqueue(pipeline);
+    await tick();
+    enqueue(pipeline);
+    await tick();
+    enqueue(pipeline);
+    await tick();
+    hold.resolve();
+    expect(await pipeline.drain()).toBe(true);
+    expect(received).toEqual([
+      { text: "Start", language: "en" },
+      { text: "पिताजी को बीपी है\nಅಮ್ಮ ಆರೋಗ್ಯವಾಗಿದ್ದಾರೆ", language: "auto" },
+    ]);
+  });
   it("runs the next STT request while prior extraction is busy, with one request per stage", async () => {
     const speech = [deferred<string>(), deferred<string>(), deferred<string>()];
     const firstExtraction = deferred<void>();
@@ -354,5 +399,27 @@ describe("two-stage recorder pipeline", () => {
     speech.resolve("No longer mounted");
     await tick();
     expect(texts).toEqual([]);
+  });
+  it("cannot retry failed captured audio after an explicit discard", async () => {
+    const transcribe = vi.fn(async () => {
+      throw new Error("Offline");
+    });
+    const onTranscript = vi.fn(async () => {});
+    const pipeline = new RecorderPipeline({
+      transcribe,
+      onTranscript,
+      onError: () => {},
+      onBackpressure: () => {},
+    });
+    enqueue(pipeline);
+    await pipeline.drain();
+    expect(pipeline.hasPending).toBe(true);
+    pipeline.cancel();
+    pipeline.retry();
+    enqueue(pipeline);
+    await tick();
+    expect(pipeline.hasPending).toBe(false);
+    expect(transcribe).toHaveBeenCalledTimes(1);
+    expect(onTranscript).not.toHaveBeenCalled();
   });
 });

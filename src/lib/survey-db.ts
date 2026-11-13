@@ -1,6 +1,15 @@
 import Dexie from "dexie";
 import { z } from "zod";
-import { surveySchema, reviewSurvey, type Survey } from "./survey";
+import {
+  surveySchema,
+  reviewSurvey,
+  migrateDraftSurvey,
+  type Survey,
+} from "./survey";
+import {
+  EXAMPLE_SEED_VERSION,
+  getExampleWorkspace,
+} from "../data/survey-examples";
 
 export interface SurveyHousehold {
   id: string;
@@ -9,15 +18,18 @@ export interface SurveyHousehold {
   address: string;
   area?: string;
   createdAt: string;
+  source?: "example";
+  workspaceGeneration?: string;
 }
 export interface SurveySettings {
   workerName: string;
   area: string;
-  language: "en" | "kn" | "hi";
+  language: "en" | "kn" | "hi" | "te" | "ta" | "ml";
   textSize: "default" | "large";
   audioAlerts: boolean;
 }
 export interface SurveyWorkspace {
+  generation: string;
   households: SurveyHousehold[];
   surveys: Survey[];
   settings: SurveySettings;
@@ -77,17 +89,27 @@ const householdSchema = z.object({
   address: z.string().max(1000),
   area: z.string().max(200).optional(),
   createdAt: timestamp,
+  source: z.literal("example").optional(),
+  workspaceGeneration: z.string().min(1).max(200).optional(),
 });
 const settingsSchema = z.object({
-  workerName: z.string().max(200),
-  area: z.string().max(200),
-  language: z.enum(["en", "kn", "hi"]),
-  textSize: z.enum(["default", "large"]),
-  audioAlerts: z.boolean(),
+  workerName: z.string().max(200).default(""),
+  area: z.string().max(200).default(""),
+  language: z.enum(["en", "kn", "hi", "te", "ta", "ml"]).default("en"),
+  textSize: z.enum(["default", "large"]).default("default"),
+  audioAlerts: z.boolean().default(false),
 });
 const clone = <T>(value: T): T => structuredClone(value);
 const equal = (left: unknown, right: unknown) =>
   JSON.stringify(left) === JSON.stringify(right);
+// Workspace epochs belong to the editing session, not the historical survey snapshot.
+const withoutGeneration = <T extends { workspaceGeneration?: string }>(
+  value: T,
+): T => {
+  const copy = { ...value };
+  delete copy.workspaceGeneration;
+  return copy;
+};
 
 function parseSurvey(value: unknown): Survey {
   const parsed = surveySchema.safeParse(value);
@@ -95,8 +117,11 @@ function parseSurvey(value: unknown): Survey {
   return parsed.data;
 }
 
-/** No demo data is seeded. This database is separate from previous demo records. */
-export function createSurveyRepository(name = "dara-surveys-v1") {
+/** Examples are seeded once without replacing existing entries. Old demo databases stay untouched. */
+export function createSurveyRepository(
+  name = "dara-surveys-v1",
+  options: { seedExamples?: boolean } = {},
+) {
   const db = new Dexie(name);
   db.version(1).stores({
     households: "&id",
@@ -123,25 +148,80 @@ export function createSurveyRepository(name = "dara-surveys-v1") {
     if (!parsed.success) throw new SurveyStorageDataError();
     return parsed.data;
   };
+  const seedExamples = async (workspaceGeneration: string) => {
+    if (
+      options.seedExamples === false ||
+      (await meta.get(`examples:${EXAMPLE_SEED_VERSION}`))
+    )
+      return;
+    const canonical = getExampleWorkspace();
+    for (const home of canonical.households) {
+      const existing = await homes.get(home.id);
+      // An existing user record with a coinciding ID is never repurposed as an example.
+      if (existing && existing.value.source !== "example") continue;
+      if (!existing)
+        await homes.add({
+          id: home.id,
+          value: withoutGeneration(clone(home)),
+          version: 1,
+        });
+      for (const survey of canonical.surveys.filter(
+        (item) => item.householdId === home.id,
+      )) {
+        if (!(await surveys.get(survey.id)))
+          await surveys.add({
+            id: survey.id,
+            householdId: survey.householdId,
+            value: withoutGeneration(clone(survey)),
+            version: 1,
+          });
+      }
+    }
+    await meta.put({
+      id: `examples:${EXAMPLE_SEED_VERSION}`,
+      generation: workspaceGeneration,
+    });
+  };
   const init = async () =>
     db.transaction("rw", homes, surveys, settings, meta, async () => {
-      if (await meta.get("workspace")) return;
-      if (
-        (await homes.count()) ||
-        (await surveys.count()) ||
-        (await settings.count())
-      )
-        throw new SurveyStorageDataError();
-      await settings.add({
-        id: "profile",
-        value: clone(DEFAULT_SURVEY_SETTINGS),
-        version: 1,
-      });
-      await meta.add({ id: "workspace", generation: crypto.randomUUID() });
+      let marker = await meta.get("workspace");
+      if (!marker) {
+        if (
+          (await homes.count()) ||
+          (await surveys.count()) ||
+          (await settings.count())
+        )
+          throw new SurveyStorageDataError();
+        await settings.add({
+          id: "profile",
+          value: clone(DEFAULT_SURVEY_SETTINGS),
+          version: 1,
+        });
+        marker = { id: "workspace", generation: crypto.randomUUID() };
+        await meta.add(marker);
+      }
+      await seedExamples(marker.generation);
+      // Migrate only editable drafts. Completed snapshots are never rewritten by an upgrade.
+      for (const row of await surveys.toArray()) {
+        if (row.value.status !== "draft" || row.value.templateVersion >= 2)
+          continue;
+        const migrated = migrateDraftSurvey(parseSurvey(row.value));
+        if (!equal(migrated, row.value))
+          await surveys.put({
+            ...row,
+            value: withoutGeneration(migrated),
+            version: row.version + 1,
+          });
+      }
     });
-  const checkGeneration = async () => {
+  const checkGeneration = async (expectedGeneration = generation) => {
     const marker = await meta.get("workspace");
-    if (!generation || marker?.generation !== generation)
+    if (
+      !generation ||
+      !expectedGeneration ||
+      marker?.generation !== generation ||
+      marker.generation !== expectedGeneration
+    )
       throw new SurveyStorageConflict();
   };
   const checkVersion = <T>(
@@ -164,8 +244,15 @@ export function createSurveyRepository(name = "dara-surveys-v1") {
       ]);
       if (!profile || !marker?.generation) throw new SurveyStorageDataError();
       const data = {
-        households: homeRows.map((row) => parse(householdSchema, row.value)),
-        surveys: surveyRows.map((row) => parseSurvey(row.value)),
+        generation: marker.generation,
+        households: homeRows.map((row) => ({
+          ...parse(householdSchema, row.value),
+          workspaceGeneration: marker.generation,
+        })),
+        surveys: surveyRows.map((row) => ({
+          ...parseSurvey(row.value),
+          workspaceGeneration: marker.generation,
+        })),
         settings: parse(settingsSchema, profile.value),
       };
       const readVersions = new Map<string, number>();
@@ -189,7 +276,8 @@ export function createSurveyRepository(name = "dara-surveys-v1") {
     });
   };
   const persistSurvey = (value: Survey, requireComplete = false) => {
-    const snapshot = clone(parseSurvey(value));
+    const expectedGeneration = value.workspaceGeneration ?? generation;
+    const snapshot = withoutGeneration(clone(parseSurvey(value)));
     if (
       requireComplete &&
       (snapshot.status !== "completed" || !snapshot.completedAt)
@@ -206,7 +294,7 @@ export function createSurveyRepository(name = "dara-surveys-v1") {
         homes,
         meta,
         async () => {
-          await checkGeneration();
+          await checkGeneration(expectedGeneration);
           const household = await homes.get(snapshot.householdId);
           if (!household)
             throw new Error("Add this household before saving its survey.");
@@ -262,17 +350,20 @@ export function createSurveyRepository(name = "dara-surveys-v1") {
   return {
     loadWorkspace: () => queue(() => read()),
     saveHousehold: (value: SurveyHousehold) => {
-      const snapshot = clone(parse(householdSchema, value));
+      const expectedGeneration = value.workspaceGeneration ?? generation;
+      const snapshot = withoutGeneration(clone(parse(householdSchema, value)));
       return queue(async () => {
         await init();
         const key = `households:${snapshot.id}`;
         const version = await db.transaction("rw", homes, meta, async () => {
-          await checkGeneration();
+          await checkGeneration(expectedGeneration);
           const saved = await homes.get(snapshot.id);
           checkVersion(key, saved, snapshot);
           if (saved && equal(saved.value, snapshot)) return saved.version;
           if (saved && saved.value.createdAt !== snapshot.createdAt)
             throw new Error("The household creation date cannot change.");
+          if (saved && saved.value.source !== snapshot.source)
+            throw new Error("The record's example provenance cannot change.");
           const nextVersion = (saved?.version ?? 0) + 1;
           await homes.put({
             id: snapshot.id,
@@ -284,11 +375,12 @@ export function createSurveyRepository(name = "dara-surveys-v1") {
         versions.set(key, version);
       });
     },
-    deleteHousehold: (householdId: string) =>
-      queue(async () => {
+    deleteHousehold: (householdId: string) => {
+      const expectedGeneration = generation;
+      return queue(async () => {
         const key = `households:${householdId}`;
         await db.transaction("rw", homes, surveys, meta, async () => {
-          await checkGeneration();
+          await checkGeneration(expectedGeneration);
           const saved = await homes.get(householdId);
           if (!saved) return;
           checkVersion(key, saved);
@@ -299,16 +391,18 @@ export function createSurveyRepository(name = "dara-surveys-v1") {
           await homes.delete(householdId);
         });
         versions.delete(key);
-      }),
+      });
+    },
     saveSurvey: (value: Survey) => persistSurvey(value),
     completeSurvey: (value: Survey) => persistSurvey(value, true),
     saveSettings: (value: SurveySettings) => {
+      const expectedGeneration = generation;
       const snapshot = clone(parse(settingsSchema, value));
       return queue(async () => {
         await init();
         const key = "settings:profile";
         const version = await db.transaction("rw", settings, meta, async () => {
-          await checkGeneration();
+          await checkGeneration(expectedGeneration);
           const saved = await settings.get("profile");
           checkVersion(key, saved, snapshot);
           if (saved && equal(saved.value, snapshot)) return saved.version;
@@ -321,6 +415,42 @@ export function createSurveyRepository(name = "dara-surveys-v1") {
           return nextVersion;
         });
         versions.set(key, version);
+      });
+    },
+    resetUserEntries: () => {
+      const expectedGeneration = generation;
+      return queue(async () => {
+        const canonical = getExampleWorkspace();
+        const nextGeneration = crypto.randomUUID();
+        await db.transaction("rw", homes, surveys, settings, meta, async () => {
+          await checkGeneration(expectedGeneration);
+          // Preferences are deliberately kept in place, including their storage version.
+          await homes.clear();
+          await surveys.clear();
+          await homes.bulkAdd(
+            canonical.households.map((home) => ({
+              id: home.id,
+              value: withoutGeneration(clone(home)),
+              version: 1,
+            })),
+          );
+          await surveys.bulkAdd(
+            canonical.surveys.map((survey) => ({
+              id: survey.id,
+              householdId: survey.householdId,
+              value: withoutGeneration(clone(survey)),
+              version: 1,
+            })),
+          );
+          await meta.put({ id: "workspace", generation: nextGeneration });
+          await meta.put({
+            id: `examples:${EXAMPLE_SEED_VERSION}`,
+            generation: nextGeneration,
+          });
+        });
+        versions.clear();
+        generation = nextGeneration;
+        return read();
       });
     },
     exportWorkspace: () =>
@@ -371,3 +501,5 @@ export const completeSavedSurvey = (survey: Survey) =>
 export const saveSurveySettings = (settings: SurveySettings) =>
   getRepository().saveSettings(settings);
 export const exportSurveyWorkspace = () => getRepository().exportWorkspace();
+
+export const resetSurveyUserEntries = () => getRepository().resetUserEntries();

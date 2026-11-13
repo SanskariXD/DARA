@@ -8,7 +8,7 @@ Started: 13 November 2026 (Asia/Kolkata)
 ## Refined brief
 Build an installable, responsive household register for ASHA workers. A worker selects a household, sees its members and previous visits, opens a visit and keeps asking the visible questions naturally. Finalized Gnani transcripts will be sent to Gemini for structured, evidence-backed field changes. A deterministic engine validates and applies these changes without moving the screen or overwriting manual edits. At review, show missing data, uncertain/conflicting answers and reported concerns. Preserve the speaker's original report and the correct household member. Only reviewed clinical rules may authorize future spoken alerts.
 
-Current release: **0.2 reference-led redesign and live providers**. The workspace starts empty. Gnani transcribes microphone audio and Gemini proposes evidence-backed form updates. Private workspace access protects paid API calls. Records remain device-local until a shared, authorized database is provisioned. The original 0.1 phases below are historical; the rebuild checklist records the current work.
+Current work: **0.3 multilingual survey refinement**. Five fictional examples accompany fresh household and pregnancy surveys. Automatic speech language detection is separate from six locally translated interface languages. Person attribution, corrections, simplified health history, background conversation reconciliation and a confirmed reset are under integrated verification. Records remain device-local. Earlier release phases below are historical.
 
 ## Phase 1 — Research and decisions
 - [x] Inspect the target GitHub repository and permissions.
@@ -120,10 +120,30 @@ This rebuild is implemented alongside the reference-led redesign and live provid
 - [x] Review phone/tablet/desktop screenshots and resolve functional findings.
 - [x] Push verified source and deploy the rebuild.
 
-## Current release checkpoint (0.2)
+## Previous release checkpoint (0.2)
 
 - Implementation: `bc5ed0cbea0357000ba8e39d50a73a2c760412ac`.
 - [CI run 43384196699](https://github.com/SanskariXD/DARA/actions/runs/43384196699): all 135 tests, TypeScript, production build and five Chromium journeys passed.
 - Production deployment `dpl_F3rvwbKT2FeCN8Jyph4k5GT4gEm6` is READY at https://dara-sigma.vercel.app/.
 - Hosted authenticated extraction created three synthetic members; hosted speech transcription returned a valid response.
 - Shared database, individual worker accounts, official questionnaire approval and field accuracy validation remain the next infrastructure/validation work.
+
+
+## Release 0.3 — Family attribution, simpler surveys and local languages
+
+User feedback: working voice workflow needs more reliable person-specific mapping and corrections, multilingual health extraction, focused health forms, example records, reset, and full interface localization.
+
+- [x] Verify Gnani automatic language detection and mixed-language support against current official documentation and a synthetic request.
+- [x] Add five clearly identifiable example households: two pregnancy-related surveys and three general household surveys. Seed without replacing existing records.
+- [x] Add a relationship dropdown, editable sex autofill for unambiguous relationships, and explicit conflicts instead of overwriting a recorded sex.
+- [x] Use a compact health overview with not-discussed / no-concerns-reported / concerns-reported states. Silence must never imply that someone is healthy.
+- [x] Combine symptoms and medical/surgical history; ask about reported hypertension; show pregnancy and expanded health fields only where relevant; keep weight with family details.
+- [x] Use one household notes area while preserving old member notes during migration.
+- [x] Require supported attribution and evidence for person-specific updates, interpret multilingual health expressions, and accept explicit corrections with audit history.
+- [x] Recheck the entire saved conversation in bounded background batches, fill missing unprotected answers, and prevent stale backfill from undoing newer corrections.
+- [x] Improve final review with member summaries, specific missing-question links, and honest incomplete/offline-check states.
+- [x] Bundle English, Kannada, Hindi, Telugu, Tamil and Malayalam interface dictionaries locally; keep spoken-language detection separate.
+- [x] Add a confirmed clear-user-entries action that restores examples and preserves preferences; guard concurrent and delayed writes.
+- [ ] Verify unit/integration/API/browser/mobile/offline/reset and language workflows, inspect visual evidence, then push and deploy.
+
+Privacy and validation boundaries remain as documented in docs/INTEGRATIONS.md. This release changes recordkeeping behavior, not clinical diagnosis or official screening requirements. All fixture/provider verification uses invented records.

@@ -10,6 +10,7 @@ import type {
 } from "../lib/survey-db";
 
 const initial: SurveyWorkspace = {
+  generation: "",
   households: [],
   surveys: [],
   settings: storage.DEFAULT_SURVEY_SETTINGS,
@@ -22,6 +23,8 @@ export function useSurveys() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const resettingRef = useRef(false);
   const failures = useRef(new Map<string, string>());
   const pending = useRef(0);
   const alive = useRef(true);
@@ -74,8 +77,31 @@ export function useSurveys() {
     },
     [report],
   );
+  const assertWritable = (workspaceGeneration?: string) => {
+    if (resettingRef.current)
+      throw new Error("Please wait for the reset to finish.");
+    if (
+      workspaceGeneration &&
+      workspaceGeneration !== current.current.generation
+    )
+      throw new storage.SurveyStorageConflict();
+  };
+  const stampSurvey = (survey: Survey): Survey => {
+    assertWritable(survey.workspaceGeneration);
+    return {
+      ...survey,
+      workspaceGeneration:
+        survey.workspaceGeneration ?? current.current.generation,
+    };
+  };
   const saveHousehold = useCallback(
-    async (household: SurveyHousehold) => {
+    async (input: SurveyHousehold) => {
+      assertWritable(input.workspaceGeneration);
+      const household = {
+        ...input,
+        workspaceGeneration:
+          input.workspaceGeneration ?? current.current.generation,
+      };
       const existing = current.current.households.some(
         (item) => item.id === household.id,
       );
@@ -95,6 +121,7 @@ export function useSurveys() {
   );
   const deleteHousehold = useCallback(
     async (householdId: string) => {
+      assertWritable();
       await persist(`delete:${householdId}`, () =>
         storage.deleteSurveyHousehold(householdId),
       );
@@ -128,7 +155,8 @@ export function useSurveys() {
     return previous;
   };
   const saveSurvey = useCallback(
-    async (survey: Survey) => {
+    async (input: Survey) => {
+      const survey = stampSurvey(input);
       checkSurvey(survey);
       replace({
         ...current.current,
@@ -142,7 +170,8 @@ export function useSurveys() {
     [persist, replace],
   );
   const completeSurvey = useCallback(
-    async (survey: Survey) => {
+    async (input: Survey) => {
+      const survey = stampSurvey(input);
       const previous = checkSurvey(survey);
       replace({
         ...current.current,
@@ -180,11 +209,32 @@ export function useSurveys() {
   );
   const saveSettings = useCallback(
     async (settings: SurveySettings) => {
+      assertWritable();
       replace({ ...current.current, settings });
       await persist("settings", () => storage.saveSurveySettings(settings));
     },
     [persist, replace],
   );
+  const resetUserEntries = useCallback(async () => {
+    if (resettingRef.current)
+      throw new Error("A reset is already in progress.");
+    resettingRef.current = true;
+    if (alive.current) setResetting(true);
+    try {
+      await persist("reset", async () => {
+        const restored = await storage.resetSurveyUserEntries();
+        replace(restored);
+        failures.current.clear();
+        if (alive.current) {
+          setError(null);
+          setReady(true);
+        }
+      });
+    } finally {
+      resettingRef.current = false;
+      if (alive.current) setResetting(false);
+    }
+  }, [persist, replace]);
   const exportData = useCallback(async () => {
     try {
       let persisted: Record<string, unknown>;
@@ -234,12 +284,14 @@ export function useSurveys() {
     ready,
     error,
     saving,
+    resetting,
     ...workspace,
     saveHousehold,
     deleteHousehold,
     saveSurvey,
     completeSurvey,
     saveSettings,
+    resetUserEntries,
     exportData,
   };
 }

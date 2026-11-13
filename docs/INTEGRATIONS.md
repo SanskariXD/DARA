@@ -1,4 +1,4 @@
-# Integrations in DARA 0.2
+# Integrations in DARA 0.3
 
 DARA connects browser recording to Gnani speech recognition and sends transcript passages with relevant survey context to Google Gemini for suggested answers. A deterministic engine checks and applies those suggestions. Households, survey drafts, transcripts and completed records are stored in IndexedDB on the current device. There is no cloud record database, automatic backup or cross-device synchronization.
 
@@ -14,6 +14,8 @@ Detailed provider protocols, limits and observed synthetic test results are in [
 | `DELETE /api/auth/session`    | Clears the browser's session cookie. It does not erase local records.                                                                         |
 | `POST /api/speech/transcribe` | Requires a valid session, validates bounded PCM WAV audio, sends it to Gnani, and returns transcript text and language.                       |
 | `POST /api/extract`           | Requires a valid session, validates a bounded survey snapshot and source passage, calls Gemini, and returns a validated extraction envelope.  |
+
+`POST /api/reconcile` uses the same private session and provider boundary as extraction. It reviews up to twelve original passages per request, with a 16,000-character target limit and a 256,000-byte JSON limit. The client covers the full saved conversation in newest-first batches and the engine applies only missing, unprotected answers. Failed or partial checks are shown explicitly before completion.
 
 Provider failures return actionable errors without revealing upstream bodies or keys. Existing answers remain intact. There is no sample-data substitution for failed live requests. The application exposes no speech playback, WebSocket relay or cloud synchronization endpoint.
 
@@ -54,3 +56,9 @@ Exports are downloaded copies of local data, not an automatic cloud backup. Keep
 ## Verification boundary
 
 Live credentials and the speech-to-form path were exercised using invented people and synthetic audio. API, engine and storage tests cover validation, evidence, manual edit protection, access checks and local persistence behavior. These checks do not establish medical accuracy, noisy-field recognition quality, multilingual field performance, a sustained throughput target or suitability for shared-device patient deployments. Review every completed survey. Individual identity, household access policies, encrypted record storage and remote backup remain separate future capabilities.
+
+## Interface language and examples
+
+English, Kannada, Hindi, Telugu, Tamil and Malayalam interface dictionaries ship with the application and work offline. Changing the interface language does not change speech recognition: recording requests automatic Indic/English detection. Transcripts, names, health histories and custom field labels retain their original text.
+
+Five fictional example households are seeded once without replacing existing records. A confirmed reset removes personal households/visits and restores those examples, preserving preferences. IndexedDB transactions and workspace-generation checks reject queued writes from a pre-reset tab or provider response. This reset is local to the current device.
