@@ -59,7 +59,7 @@ Current release: **0.2 reference-led redesign and live providers**. The workspac
 
 ## Next rebuild — Template-driven family health surveys
 
-This rebuild is implemented alongside the reference-led redesign and live provider connections; release verification is in progress. The full interaction and acceptance notes are in [`docs/NEXT_REBUILD.md`](docs/NEXT_REBUILD.md).
+This rebuild is implemented alongside the reference-led redesign and live provider connections; release verification is complete. The full interaction and acceptance notes are in [`docs/NEXT_REBUILD.md`](docs/NEXT_REBUILD.md).
 
 - [x] Add a versioned survey-template registry, starting with a Family Health Survey template and its required, optional, repeatable and conditional fields.
 - [x] Let the worker start a fresh survey for a household whose survey answers are missing, or intentionally start the survey again. Begin with unanswered template fields rather than carrying old clinical answers forward.
@@ -117,5 +117,13 @@ This rebuild is implemented alongside the reference-led redesign and live provid
 - [x] Add private workspace access for paid provider calls and bounded request validation.
 - [x] Integrate the full responsive interface and recording flow.
 - [x] Verify spoken audio through the real providers, alongside deterministic regression coverage.
-- [ ] Review phone/tablet/desktop screenshots and resolve functional findings.
-- [ ] Push verified source and deploy the rebuild.
+- [x] Review phone/tablet/desktop screenshots and resolve functional findings.
+- [x] Push verified source and deploy the rebuild.
+
+## Current release checkpoint (0.2)
+
+- Implementation: `bc5ed0cbea0357000ba8e39d50a73a2c760412ac`.
+- [CI run 43384196699](https://github.com/SanskariXD/DARA/actions/runs/43384196699): all 135 tests, TypeScript, production build and five Chromium journeys passed.
+- Production deployment `dpl_F3rvwbKT2FeCN8Jyph4k5GT4gEm6` is READY at https://dara-sigma.vercel.app/.
+- Hosted authenticated extraction created three synthetic members; hosted speech transcription returned a valid response.
+- Shared database, individual worker accounts, official questionnaire approval and field accuracy validation remain the next infrastructure/validation work.

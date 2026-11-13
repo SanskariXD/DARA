@@ -35,5 +35,5 @@ The household count controls the number of member sections, but should not silen
 - [x] Include survey-scoped custom field IDs in extraction and review contracts without allowing a model to create arbitrary fields.
 - [x] Extend extraction contracts to accept only known template field IDs and members in the active survey.
 - [x] Test fresh and repeated blank surveys, count changes, exact member attribution, uncertain attribution, notes with evidence, conflicts, reload recovery and completed-survey immutability.
-- [ ] Verify keyboard, screen-reader labels, 360px phones, tablet and desktop layouts before production deployment.
+- [x] Verify keyboard, semantic labels, 360px phones, tablet and desktop layouts before production deployment. Full assistive-technology testing remains part of field validation.
 

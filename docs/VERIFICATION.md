@@ -21,6 +21,7 @@ Checked 13 November 2026. All test records and provider smoke inputs are synthet
 | Repeated start, pause/resume and late resume failures could corrupt capture state. | Explicit startup/resume locks, capture generations and runtime checks. |
 | Slow providers could cause an unbounded processing backlog. | Separate ordered stages overlap STT/extraction, coalesce pending work within caps and pause capture while preserving queued speech. |
 | Transcript storage failure could cause retry duplication. | Retain the original cached segment, resolve ingestion once, and offer an explicit recovery export before reload. |
+| Focused field moved 236px while a response arrived. | Trace showed smooth focus scrolling rather than a changing field height; workspace scrolling is now immediate and strict browser assertions pass. |
 | Model schema accepted locally but rejected by the live provider. | Compact wire schema verified with the real Gemini API; converted and validated against the full application contract. |
 
 ## Provider evidence
@@ -29,7 +30,7 @@ See [PROVIDERS.md](PROVIDERS.md) for official contracts and exact synthetic chec
 
 ## Release checks
 
-The final test counts, GitHub Actions run and production deployment are recorded in [RELEASE.md](RELEASE.md) after verification completes. The production dependency audit currently reports zero known vulnerabilities.
+Final verification passed: 135 tests across eight files, TypeScript, production build, and all five Chromium journeys in [run 43384196699](https://github.com/SanskariXD/DARA/actions/runs/43384196699). Exact production identity and hosted endpoint checks are recorded in [RELEASE.md](RELEASE.md). The production dependency audit currently reports zero known vulnerabilities.
 
 ## Limits
 
