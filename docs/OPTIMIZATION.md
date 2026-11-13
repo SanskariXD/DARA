@@ -74,4 +74,4 @@ The verification suite includes manual-edit/focus/caret preservation during samp
 
 ## Release build measurement
 
-The verified implementation build (`4318178`) precaches 13 JavaScript/CSS assets: 932,958 raw bytes and 273,809 bytes estimated gzip (267.4 KiB), with zero external font files. The generated worker is 2,127 bytes. The same gzip estimation method as the baseline was used; these are not measured network transfer sizes. The modest increase accompanies input correctness, evidence space and readable mobile typography. No optimization was allowed to discard review evidence or compromise local draft durability.
+The verified implementation build (`043b07e`) precaches 13 JavaScript/CSS assets: 932,244 raw bytes and 273,670 bytes estimated gzip (267.3 KiB), with zero external font files. The generated worker is 2,127 bytes. The same gzip estimation method as the baseline was used; these are not measured network transfer sizes. The modest increase accompanies input correctness, evidence space and readable mobile typography. No optimization was allowed to discard review evidence or compromise local draft durability.

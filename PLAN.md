@@ -57,6 +57,27 @@ This release deliberately uses synthetic records and explicit provider placehold
 - Comfortable at 360px, tablet and desktop widths; no unexpected auto-scroll or layout jumps.
 - Research, architecture, setup instructions and remaining activation tasks are in the repository.
 
+## Next rebuild — Template-driven family health surveys
+
+Add this feature in the next rebuild; it is not part of the current deployed release. The full interaction and acceptance notes are in [`docs/NEXT_REBUILD.md`](docs/NEXT_REBUILD.md).
+
+- [ ] Add a versioned survey-template registry, starting with a Family Health Survey template and its required, optional, repeatable and conditional fields.
+- [ ] Let the worker start a fresh survey for a household whose survey answers are missing, or intentionally start the survey again. Begin with unanswered template fields rather than carrying old clinical answers forward.
+- [ ] Allow the worker to add household-level or per-member survey fields manually, with a label, supported input type and optional/required setting.
+- [ ] Ask household size in the conversation; when the worker confirms the stated count, create that many empty member sections from the template.
+- [ ] Map later answers such as each person’s name, relationship and age to the right member and template field; preserve evidence, identify uncertainty and protect manual edits.
+- [ ] Keep additional relevant information in notes with its transcript evidence and member attribution where clear; put unclear attribution into review rather than guessing.
+- [ ] Review count, member identities, missing required answers, conflicts and notes before completing the survey; keep completed surveys immutable and allow a requested repeat as a new survey.
+- [ ] Add unit, persistence, API-contract, browser and 360px/tablet/desktop regression coverage before deployment.
+
+### Acceptance for the next rebuild
+
+- A new or repeated survey starts with a blank answer set while retaining only household context needed to select the family and start the visit.
+- A spoken family size of three creates exactly three editable member sections after confirmation; corrections update the count safely without losing already reviewed entries silently.
+- Names, relationships, ages and other answers attach to the correct member and template fields only when supported by the conversation; uncertain answers and attribution remain visible for worker review.
+- Additional information can be added to notes with source evidence. No household health answer is silently inferred from old visits or generated from missing data.
+- The worker can edit all generated fields, add optional fields, pause/recover a draft, review it and complete it without changes to earlier completed surveys.
+
 ## Team ownership
 - Research agent: five-project assessment.
 - Design/frontend agent: design system and interface.

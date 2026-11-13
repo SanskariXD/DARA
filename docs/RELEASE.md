@@ -4,12 +4,12 @@ DARA 0.1.0 — 13 November 2026 (India).
 
 - Public app: https://dara-sigma.vercel.app/
 - Repository: https://github.com/SanskariXD/DARA
-- Deployed implementation: `4318178e6c751b162ea7050fdf6ea5410662efee`
-- Verification: [GitHub Actions run 43320022534](https://github.com/SanskariXD/DARA/actions/runs/43320022534)
+- Deployed implementation: `043b07e9770e3252e1f01eacaa4a082a29147ff8`
+- Verification: [GitHub Actions run 43318473529](https://github.com/SanskariXD/DARA/actions/runs/43318473529)
 - Vercel team: `Sanskari's projects` (`sanskaris-projects`)
 - Vercel project: `dara` (`prj_jTIgFE5HlXN7bEAZQaKwoVOem81F`)
-- Production deployment: `dpl_CBq4YGZm7vLkhaFF3gjAa84hSKEs`
-- Deployment URL: https://dara-en76c031k-sanskaris-projects.vercel.app/
+- Production deployment: `dpl_Hbe7X3f2ZDsqWdJs78j9MNgGE1AB`
+- Deployment URL: https://dara-e8mzvrvu7-sanskaris-projects.vercel.app/
 - Deployment method: direct source upload, Node.js 24, Next.js 16.4.6, functions in Mumbai (`bom1`).
 - External services: intentionally unconfigured; synthetic demo and manual records only.
 - Automatic Git deployments: pending Vercel GitHub installation access for this repository.
@@ -20,7 +20,7 @@ DARA 0.1.0 — 13 November 2026 (India).
 
 Hosted browser checks additionally exercised invalid-phone blocking, sequential decimal entry, source evidence, reviewed conflict resolution, completed read-only records after reload, new household entry, saved preferences and explicit unconfigured recording. The active field position, focus and caret remained stable during sample updates.
 
-The release-documentation commit after this deployment changes no runtime application source. Expanded responsive checks at 360px, 390px and 768px passed, including visible recording status, no horizontal overflow, usable inputs and focused fields clear of the fixed toolbar. Screenshots were independently inspected; representative images are in this directory.
+Any subsequent documentation, screenshot and responsive-test commit does not change the runtime application deployed above. The expanded responsive checks cover 360px, 390px and 768px; their final result is available in the repository's Actions history.
 
 ## Intentional limits
 

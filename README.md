@@ -57,6 +57,7 @@ The backend's sample endpoint accepts only sample household/segment identifiers.
 ## Project documents
 
 - [Phase plan and tracked TODOs](PLAN.md)
+- [Next rebuild: template-driven family health survey](docs/NEXT_REBUILD.md)
 - [Five-project research and reuse decisions](docs/RESEARCH.md)
 - [Product and design system](docs/DESIGN.md)
 - [Shared data contract](docs/CONTRACT.md)
