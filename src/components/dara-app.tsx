@@ -1056,7 +1056,6 @@ function DaraWorkspace({
               : [],
           ),
         );
-      setNotice("The conversation has been processed.");
     } catch (e) {
       if (workspaceEpoch.current !== epoch) return;
       setNotice(
