@@ -1,36 +1,35 @@
-# DARA 0.4 release
+# DARA 0.5 release
 
 Released 13 November 2026.
 
 - App: https://dara-sigma.vercel.app/
 - Repository: https://github.com/SanskariXD/DARA
-- Implementation commit: `bc25652869955d7f660f11e1f64b5797b26a9c97`.
-- Production deployment: `dpl_CSADQuVEQRm8PYa78Cwe4boqBGGh`, READY.
-- Deployment URL: https://dara-hetnlo5pi-sanskaris-projects.vercel.app/
+- Verified implementation commit: `f2371915c853cef339d65f5388af5fe1ab418bdf`.
+- Production runtime deployment: `dpl_Agt7zh7SssDeCCwo74sQhtXyqGKH`, READY.
+- Deployment URL: https://dara-hlj1y3i05-sanskaris-projects.vercel.app/
 - Deployment method: Git integration from main, Next.js on Node 24.
-- CI: https://github.com/SanskariXD/DARA/actions/runs/43447296578
+- CI: https://github.com/SanskariXD/DARA/actions/runs/43461711999
 
 ## Changes
 
-- Fixed health extraction on fresh person introductions, repeated introduction backfill, Kannada spouse references and contextual pronouns. Person changes prevent stale references from assigning someone else’s answer.
-- Recovered household notes and missing portions of machine-generated history, while preserving manual answers, newer corrections and focused fields.
-- Removed the large conversation-check gate and extra manual-check acknowledgement. Checks retry automatically; missing answers get a small status hint. A final check that adds answers still requires the worker to review those additions.
-- Added one household contact number and moved weight to expanded health details. Existing stored values and completed records remain intact.
-- Added pregnancy and postnatal details: reported duration, MCP card, nutrition, supplements, injections, facility and care visits. Source-backed editable checklists distinguish delivered counselling from patient reports or future promises.
-- Added rainy-season visits with known family identities, fresh health questions, stagnant-water observations and a short guidance checklist.
-- Enriched the two pregnancy examples and changed one example to a four-person rainy-season visit. Only untouched canonical examples upgrade automatically; edited examples and user records are preserved.
-- Added translations for the new controls in all six interface languages and compact report assignment in Review.
+- Kept the explicitly introduced respondent separate from the family member currently being discussed. Ajay's first-person age, fever and breathing difficulty remain with Ajay after discussing Anisha; a new person's explicit introduction can correctly switch the speaker.
+- Added evidence-backed recovery of incorrect machine-owned answers, with exact previous-value, source, revision and identity guards. Manual edits, focused fields and newer corrections remain protected. Identical wrong-person machine copies can be removed with audit history.
+- Applied manual edits, live extraction and background checks through one latest-draft mutation path and ordered save queue. Genuine other-tab/reset conflicts remain protected. Completion checks for changes after the save queue drains and asks for review again when needed.
+- Ran bounded conversation recovery during intake as well as review, preserving original speaker/topic anchors and retrying transient failures automatically. Resolved prompts disappear; ordinary notes are reviewed with the normal visit checkbox.
+- Reused household identity and contact for New survey and Monsoon visits, with explicit confirmation of current family members and fresh health/notes.
+- Offered Pregnancy follow-up only from confirmed pregnancy/postnatal history. Prior care is labelled, new counselling checks start empty, and confirmed pregnancy gets an editable next-visit suggestion 14 days after this visit. Manually selected or cleared dates are preserved.
+- Added six-language copy for the follow-up and review changes while preserving original names, notes and source quotes.
 
 ## Verification
 
-TypeScript, all **275 unit/API/domain/storage/integration tests**, the production build and **all 10 Chromium journeys** passed on implementation commit `bc25652869955d7f660f11e1f64b5797b26a9c97` in the linked CI run. The browser suite covers fresh English/Kannada capture and reload, protected focused/manual edits, household phone/health weight, pregnancy and rainy visits, six languages, offline/reset behavior and automatic retry/final review.
+TypeScript, all **322 unit/API/domain/storage/integration tests**, the production build and **all 10 Chromium journeys** passed on the implementation commit above. Browser coverage includes the exact Ajay/Anisha conversation, fresh English and Kannada speaker introductions, protected focus/position, concurrent extraction/recheck/manual saves, immutable history, pregnancy and Monsoon follow-ups, all six languages, offline editing, reset isolation and automatic retry/final review. Phone/tablet checks cover 360, 390 and 768 pixels. Pregnancy, rainy-season, language and final-review screenshots were inspected; screenshots are not committed.
 
-Five real Gemini requests produced four successful synthetic scenarios; one upstream rejection succeeded on retry. All four captured responses were decoded, applied to the final domain engine and saved/reloaded through the repository. English health and household notes, Kannada spouse attribution, pregnancy details/direct counselling, and Kannada rainy-season observations/advice passed those checks. These are specific regression probes, not a field-accuracy guarantee. See [PROVIDERS.md](PROVIDERS.md).
+Eight bounded real Gemini requests produced four upstream 503 responses and four HTTP 200 responses. One response was safely rejected for invented member IDs. Successful English/Kannada introductions and a Kannada machine-repair response were replayed through the final decoder and repository save/reload; all 14 repair checks passed. This round does not claim successful live English health extraction or sustained provider availability. Details: [PROVIDERS.md](PROVIDERS.md).
 
-The public health endpoint reports 0.4.0. Hosted checks verified the homepage and client assets (HTTP 200), unauthenticated extraction rejection (401), workspace unlock/session/logout (200) and a Secure session cookie. Configured secrets are absent from published source and built client assets. Verification screenshots contain fictional records and are not committed to this repository.
+Hosted checks confirmed version 0.5.0, homepage/assets/manifest/audio worklet HTTP 200, unauthenticated paid-route rejection (401), workspace unlock/session/logout and a Secure session cookie. The production dependency audit reports zero known vulnerabilities. Configured secrets are absent from published source and built client assets.
 
-## Recording boundaries
+## Boundaries
 
-A bare “temperature 103” is retained in history with a request to clarify its unit, never silently treated as Celsius. Unmentioned health is not marked healthy. A patient mentioning an injection or appointment does not by itself complete a counselling task.
+Records remain in this browser/device's IndexedDB with export. This release does not add a shared database or individual worker accounts. Manual review is still required. Human-recorded noisy speech, sustained recording on target phones and native-speaker field validation remain outstanding. The 14-day date is an editable recordkeeping suggestion, not an individual clinical recommendation. Care-field scope is documented in [CARE-WORKFLOWS.md](CARE-WORKFLOWS.md).
 
-Records remain in this browser/device’s IndexedDB, with export; this release does not add a shared cloud database or individual worker accounts. Native-speaker review, noisy field audio and target-phone validation remain outstanding. Care-field sources and scope are documented in [CARE-WORKFLOWS.md](CARE-WORKFLOWS.md).
+Documentation-only commits after the verified implementation do not change the tested runtime source.

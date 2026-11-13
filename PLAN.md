@@ -13,15 +13,15 @@ Current work: **0.5 — reliable updates and household follow-ups**. Preserve th
 
 ## Version 0.5 delivery tracker
 
-| Phase                       | Owner                      | Reviewable outcome                                                                                                                                                       | Status                            |
-| --------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| 1. Diagnose record races    | Data + realtime            | Reproduce competing manual/live/recheck writes; distinguish same-tab sequencing from a genuine external conflict                                                         | Implemented; verification pending |
-| 2. Stabilize updates        | Data + realtime + UI       | Ordered persistence and latest-state patch application, preserving true multi-tab CAS and reset generation checks                                                        | Implemented; verification pending |
-| 3. Household follow-ups     | Engine + UI                | New survey and Monsoon reuse only known roster/contact, with explicit member verification and fresh health answers                                                       | Implemented; verification pending |
-| 4. Pregnancy care           | Engine + UI                | Care opens after confirmed pregnancy; editable next-visit suggestion 14 days later; follow-up action only with confirmed history and clearly labelled prior care context | Implemented; verification pending |
-| 5. Actionable review        | Engine + UI + localization | Resolve obsolete prompts, group remaining questions, keep worker-facing errors clear and honest                                                                          | Implemented; verification pending |
-| 6. Independent verification | Verification               | Manual/async/save races, reload, roster changes, pregnancy transitions, focus/scroll, languages, mobile layouts and failure recovery                                     | Pending                           |
-| 7. Release                  | Verification + root        | Build, publish tested source, inspect deployed flows, record deployment and stop                                                                                         | Pending                           |
+| Phase                       | Owner                      | Reviewable outcome                                                                                                                                                       | Status   |
+| --------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| 1. Diagnose record races    | Data + realtime            | Reproduce competing manual/live/recheck writes; distinguish same-tab sequencing from a genuine external conflict                                                         | Verified |
+| 2. Stabilize updates        | Data + realtime + UI       | Ordered persistence and latest-state patch application, preserving true multi-tab CAS and reset generation checks                                                        | Verified |
+| 3. Household follow-ups     | Engine + UI                | New survey and Monsoon reuse only known roster/contact, with explicit member verification and fresh health answers                                                       | Verified |
+| 4. Pregnancy care           | Engine + UI                | Care opens after confirmed pregnancy; editable next-visit suggestion 14 days later; follow-up action only with confirmed history and clearly labelled prior care context | Verified |
+| 5. Actionable review        | Engine + UI + localization | Resolve obsolete prompts, group remaining questions, keep worker-facing errors clear and honest                                                                          | Verified |
+| 6. Independent verification | Verification               | Manual/async/save races, reload, roster changes, pregnancy transitions, focus/scroll, languages, mobile layouts and failure recovery                                     | Verified |
+| 7. Release                  | Verification + root        | Build, publish tested source, inspect deployed flows, record deployment and stop                                                                                         | Verified |
 
 - [x] Reproduce and fix false same-tab storage conflicts without weakening external-write protection.
 - [x] Route extraction and full-conversation reconciliation through current draft state; run recovery during intake as well as review.
@@ -30,13 +30,17 @@ Current work: **0.5 — reliable updates and household follow-ups**. Preserve th
 - [x] Keep new general/Monsoon health and notes empty; label any intentionally carried pregnancy care context.
 - [x] Suggest an editable next visit 14 days after confirmed pregnancy, without replacing a worker-entered date.
 - [x] Show only unresolved actionable review questions and real failure messages.
-- [ ] Verify draft survival, reset isolation, stable focus/caret/scroll, and immutable completed history.
-- [ ] Complete localization, independent tests, production build, deployment and live verification.
+- [x] Verify draft survival, reset isolation, stable focus/caret/scroll, and immutable completed history.
+- [x] Complete localization, independent tests, production build, deployment and live verification.
 
 ### Version 0.5 verification evidence
 
-- Domain/storage/provider integration: **183 tests passed across 9 suites** (engine independent run); TypeScript passed. Coverage includes exact speaker attribution, existing-value repair protections, carried-identity confirmation, pregnancy eligibility, and editable 14-day suggestions.
-- UI implementation and CSS are frozen pending browser verification. All new interface copy has six-language coverage. Final hook/localization and complete browser results will be recorded by the release verifier.
+- Verified runtime: `f2371915c853cef339d65f5388af5fe1ab418bdf`.
+- [CI run 43461711999](https://github.com/SanskariXD/DARA/actions/runs/43461711999): **322 tests across 21 files**, TypeScript, production build and **all 10 Chromium journeys passed**.
+- Browser coverage includes exact Ajay/Anisha attribution, a second Kannada speaker, simultaneous extraction/recheck/manual saves, pregnancy follow-up dates/history, confirmed family reuse, focus/position, six languages, offline/reset and completion recovery.
+- Captured real Kannada repair passed all 14 decoder/engine/repository replay assertions. Upstream 503 outcomes are documented honestly in [PROVIDERS.md](docs/PROVIDERS.md).
+- Phone/tablet screenshots inspected; hosted assets/authentication checked; production dependency audit and configured-secret scans passed.
+- Runtime deployment `dpl_Agt7zh7SssDeCCwo74sQhtXyqGKH` is READY at https://dara-sigma.vercel.app/. [Release record](docs/RELEASE.md) identifies the exact source and remaining field-validation work.
 
 ## Phase 1 — Research and decisions
 
@@ -207,7 +211,7 @@ Privacy and validation boundaries remain as documented in docs/INTEGRATIONS.md. 
 
 Clinical field rationale and source links: [docs/CARE-WORKFLOWS.md](docs/CARE-WORKFLOWS.md).
 
-## Current release checkpoint (0.4)
+## Previous release checkpoint (0.4)
 
 - Runtime: `bc25652869955d7f660f11e1f64b5797b26a9c97`.
 - [CI run 43447296578](https://github.com/SanskariXD/DARA/actions/runs/43447296578): 275 tests, TypeScript, production build and all 10 browser journeys passed.
